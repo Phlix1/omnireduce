@@ -1,4 +1,4 @@
-#include "context.hpp"
+#include "omnireduce/context.hpp"
 #include <unistd.h>
 #include <iostream>
 #include "mpi.h"

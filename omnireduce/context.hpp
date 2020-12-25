@@ -5,7 +5,7 @@
 
 #pragma once
 
-#include "common.hpp"
+#include "omnireduce/common.hpp"
 
 namespace omnireduce {
     void *OmniMaster(void *ctx);

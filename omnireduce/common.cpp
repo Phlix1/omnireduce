@@ -1,4 +1,4 @@
-#include "common.hpp"
+#include "omnireduce/common.hpp"
 
 namespace omnireduce {
 

@@ -1,5 +1,5 @@
-#include "aggregator.hpp"
-#include "aggcontext.hpp"
+#include "omnireduce/aggregator.hpp"
+#include "omnireduce/aggcontext.hpp"
 
 namespace omnireduce {
     thread_local static uint32_t num_server_threads;

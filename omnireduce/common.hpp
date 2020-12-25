@@ -13,7 +13,7 @@
 #include <sys/types.h>
 #include <byteswap.h>
 #include <iostream>
-#include "params.hpp"
+#include "omnireduce/params.hpp"
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)

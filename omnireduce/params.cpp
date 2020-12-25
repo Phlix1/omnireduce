@@ -1,4 +1,4 @@
-#include "params.hpp"
+#include "omnireduce/params.hpp"
 #include <boost/program_options.hpp>
 
 namespace po = boost::program_options;

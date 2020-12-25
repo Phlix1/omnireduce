@@ -1,5 +1,5 @@
-#include "aggcontext.hpp"
-#include "omnireduce.hpp"
+#include "omnireduce/aggcontext.hpp"
+#include "omnireduce/omnireduce.hpp"
 
 
 namespace omnireduce {

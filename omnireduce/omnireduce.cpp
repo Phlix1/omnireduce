@@ -1,8 +1,8 @@
-#include "omnireduce.hpp"
-#include "worker.hpp"
-#include "common.hpp"
-#include "params.hpp"
-#include "aggregator.hpp"
+#include "omnireduce/omnireduce.hpp"
+#include "omnireduce/worker.hpp"
+#include "omnireduce/common.hpp"
+#include "omnireduce/params.hpp"
+#include "omnireduce/aggregator.hpp"
 
 namespace omnireduce {
 

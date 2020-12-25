@@ -5,10 +5,10 @@ endif
 
 CC  := g++
 LD  := g++
-SOURCEDIR  := ${OMNIREDUCE_PATH}/src
+SOURCEDIR  := ${OMNIREDUCE_PATH}/omnireduce
 DESTDIR  := ${OMNIREDUCE_PATH}/build
 
-INCLUDE  :=-I ${SOURCEDIR}
+INCLUDE  :=-I ${OMNIREDUCE_PATH}
 LDFLAGS  := -shared -lstdc++ -fPIC
 LDLIBS  := -libverbs -lpthread -lboost_system -lboost_thread -lboost_chrono -lboost_program_options
 CXXFLAGS  := -Wall -Wextra -fPIC -O3 -std=c++11
@@ -19,9 +19,9 @@ TARGET_LIB  := libomnireduce.so
 
 all:${OBJS}
 	${LD} ${LDFLAGS}  -o ${SOURCEDIR}/${TARGET_LIB} ${OBJS} ${LDLIBS}
-	mkdir -p ${DESTDIR}/include
+	mkdir -p ${DESTDIR}/include/omnireduce
 	cp ${SOURCEDIR}/${TARGET_LIB} ${DESTDIR}
-	cp ${SOURCEDIR}/*.hpp ${DESTDIR}/include
+	cp ${SOURCEDIR}/*.hpp ${DESTDIR}/include/omnireduce
 
 ${SOURCEDIR}/%.o:${SOURCEDIR}/%.cpp
 	${CC} -c ${CXXFLAGS} $< -o ${SOURCEDIR}/$*.o ${INCLUDE}

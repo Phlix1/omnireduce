@@ -5,8 +5,8 @@
 
 #pragma once
 
-#include "context.hpp"
-#include "aggcontext.hpp"
+#include "omnireduce/context.hpp"
+#include "omnireduce/aggcontext.hpp"
 
 namespace omnireduce {
     int master(OmniContext* dctx);

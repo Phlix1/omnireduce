@@ -1,5 +1,5 @@
-#include "worker.hpp"
-#include "context.hpp"
+#include "omnireduce/worker.hpp"
+#include "omnireduce/context.hpp"
 
 namespace omnireduce {
     thread_local static uint32_t num_worker_threads;
