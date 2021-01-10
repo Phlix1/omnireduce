@@ -3,8 +3,11 @@
 
 namespace omnireduce {
     thread_local static uint32_t num_worker_threads;
+    thread_local static int32_t devId;
+    thread_local static bool async;
     thread_local static uint32_t thread_id;
     thread_local static TensorUpdate tu;
+    thread_local static uint32_t chunk_size;
     thread_local static uint32_t block_size;
     thread_local static uint32_t message_size;
     thread_local static uint32_t tensor_size;
@@ -17,6 +20,13 @@ namespace omnireduce {
     thread_local static uint32_t prepost_recv_num;
     thread_local static uint32_t buff_unit_size;
     thread_local static uint32_t typecode;
+#ifdef USE_CUDA
+    thread_local static cudaStream_t stream;
+    thread_local static cudaEvent_t *events;
+    thread_local static bool *chunk_finished;
+    thread_local static uint32_t *chunk_completed;
+    thread_local static uint32_t chunk_num;
+#endif
 
     uint32_t find_next_nonzero_block(uint32_t next_offset)
     {
@@ -87,6 +97,124 @@ namespace omnireduce {
         return rc;
     }
 
+#ifdef USE_CUDA
+    int cuda_sync_post_send_client(OmniContext* dctx_ptr, uint32_t num, uint32_t *current_offsets, 
+                            uint32_t *next_offsets, uint32_t slot, uint32_t qp_num, uint32_t buff_index)
+    {
+        struct ibv_send_wr sr;
+        struct ibv_sge sge;
+        struct ibv_send_wr *bad_wr = NULL;
+        int qid, mid;
+        if (unlikely(qp_num==0)) 
+        {
+            qid = (slot/num_slots_per_thread)*num_qps_per_aggregator_per_thread*num_aggregators
+                    +slot%(num_qps_per_aggregator_per_thread*num_aggregators);
+            mid = qp_num_to_peerid[dctx_ptr->qp[qid]->qp_num];
+        }
+        else 
+        {
+	        qid = qp_num_revert[qp_num];
+	        mid = qp_num_to_peerid[qp_num];            
+        }
+        //std::cout<<"send: qp_num="<<dctx_ptr->qp[qid]->qp_num<<std::endl;
+        int rc;
+        memset(&sge, 0, sizeof(sge));
+        uint8_t *tmp = (uint8_t *)dctx_ptr->comm_buf+(2*message_size*slot+buff_index*(2*message_size)*num_slots_per_thread*num_worker_threads)*buff_unit_size;
+        for(uint32_t i=0; i<num; i++)
+        {
+            if (unlikely(current_offsets[i]+block_size-start_offset > tensor_size))
+            {
+                //memset(tmp+i*block_size*element_size, 0, block_size*element_size);
+                if (current_offsets[i]-start_offset < tensor_size)
+                    cudaMemcpy(tmp+i*block_size*element_size, (uint8_t *)tu.ptr+current_offsets[i]*element_size, (start_offset+tensor_size-current_offsets[i])*element_size, cudaMemcpyDeviceToHost);
+            }
+            else
+            {   
+                cudaMemcpy(tmp+i*block_size*element_size, (uint8_t *)tu.ptr+current_offsets[i]*element_size, block_size*element_size, cudaMemcpyDeviceToHost);
+            }
+        }
+        memcpy(tmp+block_size*num*element_size, next_offsets, num*sizeof(uint32_t));
+        sge.addr = (uintptr_t)tmp;
+        sge.length = block_size*num*element_size+num*sizeof(uint32_t);
+        sge.lkey = dctx_ptr->mr->lkey;
+        memset(&sr, 0, sizeof(sr));
+        sr.wr_id = 0;
+        sr.sg_list = &sge;
+        sr.num_sge = 1;
+        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        sr.send_flags = IBV_SEND_SIGNALED;
+        sr.wr.rdma.remote_addr = dctx_ptr->remote_props_array[mid].addr+(2*message_size*slot
+                                    +2*message_size*num_slots_per_thread*num_worker_threads*dctx_ptr->workerId)*buff_unit_size;
+		sr.wr.rdma.rkey = dctx_ptr->remote_props_array[mid].rkey;
+        sr.imm_data = (typecode << 28) + (num << 16) + slot;
+        rc = ibv_post_send(dctx_ptr->qp[qid], &sr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post SR %d\n", rc);
+        return rc;
+    }
+    int cuda_async_post_send_client(OmniContext* dctx_ptr, uint32_t num, uint32_t *current_offsets, 
+                            uint32_t *next_offsets, uint32_t slot, uint32_t qp_num, uint32_t buff_index)
+    {
+        struct ibv_send_wr sr;
+        struct ibv_sge sge;
+        struct ibv_send_wr *bad_wr = NULL;
+        int qid, mid;
+        if (unlikely(qp_num==0)) 
+        {
+            qid = (slot/num_slots_per_thread)*num_qps_per_aggregator_per_thread*num_aggregators
+                    +slot%(num_qps_per_aggregator_per_thread*num_aggregators);
+            mid = qp_num_to_peerid[dctx_ptr->qp[qid]->qp_num];
+        }
+        else 
+        {
+	        qid = qp_num_revert[qp_num];
+	        mid = qp_num_to_peerid[qp_num];            
+        }
+        //std::cout<<"send: qp_num="<<dctx_ptr->qp[qid]->qp_num<<std::endl;
+        int rc;
+        memset(&sge, 0, sizeof(sge));
+        uint8_t *tmp = (uint8_t *)dctx_ptr->comm_buf+(2*message_size*slot+buff_index*(2*message_size)*num_slots_per_thread*num_worker_threads)*buff_unit_size;
+        for(uint32_t i=0; i<num; i++)
+        {
+            uint32_t chunk_id = (current_offsets[i]-start_offset)*element_size/chunk_size;
+            if (chunk_finished[chunk_id]==false)
+            {
+                cudaEventSynchronize(events[chunk_id]);
+                cudaEventDestroy(events[chunk_id]);
+                chunk_finished[chunk_id] = true;
+            }
+            if (unlikely(current_offsets[i]+block_size-start_offset > tensor_size))
+            {
+                //memset(tmp+i*block_size*element_size, 0, block_size*element_size);
+                if (current_offsets[i]-start_offset < tensor_size)
+                    memcpy(tmp+i*block_size*element_size, (uint8_t *)dctx_ptr->host_tensor+current_offsets[i]*element_size, (start_offset+tensor_size-current_offsets[i])*element_size);
+            }
+            else
+            {   
+                memcpy(tmp+i*block_size*element_size, (uint8_t *)dctx_ptr->host_tensor+current_offsets[i]*element_size, block_size*element_size);
+            }
+        }
+        memcpy(tmp+block_size*num*element_size, next_offsets, num*sizeof(uint32_t));
+        sge.addr = (uintptr_t)tmp;
+        sge.length = block_size*num*element_size+num*sizeof(uint32_t);
+        sge.lkey = dctx_ptr->mr->lkey;
+        memset(&sr, 0, sizeof(sr));
+        sr.wr_id = 0;
+        sr.sg_list = &sge;
+        sr.num_sge = 1;
+        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        sr.send_flags = IBV_SEND_SIGNALED;
+        sr.wr.rdma.remote_addr = dctx_ptr->remote_props_array[mid].addr+(2*message_size*slot
+                                    +2*message_size*num_slots_per_thread*num_worker_threads*dctx_ptr->workerId)*buff_unit_size;
+		sr.wr.rdma.rkey = dctx_ptr->remote_props_array[mid].rkey;
+        sr.imm_data = (typecode << 28) + (num << 16) + slot;
+        rc = ibv_post_send(dctx_ptr->qp[qid], &sr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post SR %d\n", rc);
+        return rc;
+    }
+#endif
+
     int post_receive_client(OmniContext* dctx_ptr, uint32_t slot, uint32_t qp_num)
     {
         struct ibv_recv_wr rr;
@@ -130,11 +258,19 @@ namespace omnireduce {
         num_worker_threads = omnireduce_par.getNumWorkerThreads();
         block_size = omnireduce_par.getBlockSize();
         message_size = omnireduce_par.getMessageSize();
+        chunk_size = omnireduce_par.getChunkSize();
         num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
         num_blocks_per_thread = num_slots_per_thread*(message_size/block_size);
         num_qps_per_aggregator_per_thread = omnireduce_par.getNumQpsPerAggTh();
         num_aggregators = omnireduce_par.getNumAggregators();
         prepost_recv_num = omnireduce_par.getPrepostRecvNum();
+#ifdef USE_CUDA
+        events = (cudaEvent_t *)malloc(1024*sizeof(cudaEvent_t));
+        chunk_finished = (bool *)malloc(1024*sizeof(bool));
+        chunk_completed = (uint32_t *)malloc(1024*sizeof(uint32_t));
+        uint32_t *previous_chunk = (uint32_t *)malloc(sizeof(uint32_t)*num_blocks_per_thread);
+        memset(previous_chunk, 0, sizeof(uint32_t)*num_blocks_per_thread);
+#endif
         uint32_t *current_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_blocks_per_thread);
         memset(current_offset, 0, sizeof(uint32_t)*num_blocks_per_thread);
         uint32_t *current_offsets = (uint32_t *)malloc(sizeof(uint32_t)*message_size);
@@ -173,8 +309,36 @@ namespace omnireduce {
                         std::cerr<<"Data type error"<<std::endl;
                         exit(1);
                 }
+                devId = tu.devId;
+                async = tu.async;
                 start_offset = tu.start_idx;
                 tensor_size = tu.count;
+#ifdef USE_CUDA
+                memset(previous_chunk, 0, sizeof(uint32_t)*num_blocks_per_thread);
+                cudaSetDevice(devId);
+                if (async==true)
+                {
+                    cudaStreamCreate(&stream);
+                    chunk_num = tensor_size*element_size/chunk_size;
+                    if (tensor_size*element_size%chunk_size!=0)
+                        chunk_num += 1;
+                    memset(chunk_finished, 0, sizeof(bool)*chunk_num);
+                    memset(chunk_completed, 0, sizeof(uint32_t)*chunk_num);
+                    for (uint32_t i=0; i<chunk_num-1; i++)
+                    {
+                        cudaEventCreate(&events[i]);
+                        cudaMemcpyAsync((uint8_t *)dctx_ptr->host_tensor+start_offset*element_size+chunk_size*i, 
+                                            (uint8_t *)tu.ptr+start_offset*element_size+chunk_size*i, 
+                                            chunk_size, cudaMemcpyDeviceToHost, stream);
+                        cudaEventRecord(events[i], stream);
+                    }
+                    cudaEventCreate(&events[chunk_num-1]);
+                    cudaMemcpyAsync((uint8_t *)dctx_ptr->host_tensor+start_offset*element_size+chunk_size*(chunk_num-1), 
+                                        (uint8_t *)tu.ptr+start_offset*element_size+chunk_size*(chunk_num-1), 
+                                        tensor_size*element_size-chunk_size*(chunk_num-1), cudaMemcpyDeviceToHost, stream);
+                    cudaEventRecord(events[chunk_num-1], stream);
+                }
+#endif
                 total_num_msgs = tensor_size/message_size;
                 if (tensor_size%message_size != 0)
                     total_num_msgs++;
@@ -187,7 +351,17 @@ namespace omnireduce {
                         current_offsets[j] = start_offset+i*message_size+j*block_size;
                         next_offsets[j] = find_next_nonzero_block(current_offsets[j]+message_size*num_slots_per_thread);
                     }
-                    ret = post_send_client(dctx_ptr, message_size/block_size, current_offsets, next_offsets, i+num_slots_per_thread*thread_id, 0, 0);
+                    if (devId<0)
+                        ret = post_send_client(dctx_ptr, message_size/block_size, current_offsets, next_offsets, i+num_slots_per_thread*thread_id, 0, 0);
+#ifdef USE_CUDA
+                    else
+                    {
+                        if (async==false)
+                            ret = cuda_sync_post_send_client(dctx_ptr, message_size/block_size, current_offsets, next_offsets, i+num_slots_per_thread*thread_id, 0, 0);
+                        else
+                            ret = cuda_async_post_send_client(dctx_ptr, message_size/block_size, current_offsets, next_offsets, i+num_slots_per_thread*thread_id, 0, 0);
+                    }                               
+#endif
                 }
                 while (finished_slots<first_burst && !force_quit)
                 {
@@ -213,12 +387,55 @@ namespace omnireduce {
                                         copy_size = (start_offset+tensor_size-current_offset[bid])*element_size;
                                         if (likely(copy_size>block_size*element_size))
                                             copy_size = block_size*element_size;
-                                        if (likely(copy_size>0))
-                                            memcpy((uint8_t *)tu.ptr+current_offset[bid]*element_size, 
-                                                (uint8_t *)dctx_ptr->comm_buf+k*block_size*element_size
-                                                +(slot*(2*message_size)+thread_id*(2*message_size)*num_slots_per_thread
-                                                +buff_index[slot]*(2*message_size)*num_slots_per_thread*num_worker_threads)*buff_unit_size,
-                                                copy_size);
+                                        if (likely(copy_size>0)) {
+                                            if (devId<0) {
+                                                memcpy((uint8_t *)tu.ptr+current_offset[bid]*element_size, 
+                                                    (uint8_t *)dctx_ptr->comm_buf+k*block_size*element_size
+                                                    +(slot*(2*message_size)+thread_id*(2*message_size)*num_slots_per_thread
+                                                    +buff_index[slot]*(2*message_size)*num_slots_per_thread*num_worker_threads)*buff_unit_size,
+                                                    copy_size);
+                                            }
+#ifdef USE_CUDA
+                                            else {
+                                                if (async==false)
+                                                    cudaMemcpy((uint8_t *)tu.ptr+current_offset[bid]*element_size, 
+                                                        (uint8_t *)dctx_ptr->comm_buf+k*block_size*element_size
+                                                        +(slot*(2*message_size)+thread_id*(2*message_size)*num_slots_per_thread
+                                                        +buff_index[slot]*(2*message_size)*num_slots_per_thread*num_worker_threads)*buff_unit_size,
+                                                        copy_size, cudaMemcpyHostToDevice);
+                                                else
+                                                {
+                                                    uint32_t current_chunk = (current_offset[bid]-start_offset)*element_size/chunk_size;
+                                                    if (chunk_finished[current_chunk]==false)
+                                                    {
+                                                        cudaEventSynchronize(events[current_chunk]);
+                                                        cudaEventDestroy(events[current_chunk]);
+                                                        chunk_finished[current_chunk] = true;
+                                                    }
+                                                    memcpy((uint8_t *)dctx_ptr->host_tensor+current_offset[bid]*element_size, 
+                                                        (uint8_t *)dctx_ptr->comm_buf+k*block_size*element_size
+                                                        +(slot*(2*message_size)+thread_id*(2*message_size)*num_slots_per_thread
+                                                        +buff_index[slot]*(2*message_size)*num_slots_per_thread*num_worker_threads)*buff_unit_size,
+                                                        copy_size);
+                                                    if (meta_ptr[k]>=omnireduce_par.getInfOffset(0))
+                                                        current_chunk=chunk_num-1;
+                                                    for(uint32_t cid=previous_chunk[bid]; cid<current_chunk; cid++) 
+                                                    {
+                                                        chunk_completed[cid]++;
+                                                        if (chunk_completed[cid]==num_blocks_per_thread) 
+                                                        {
+                                                            //if (dctx_ptr->workerId==0)
+                                                            //    std::cout<<chunk_num<<" "<<start_offset<<" "<<cid<<std::endl;
+                                                            cudaMemcpyAsync((uint8_t *)tu.ptr+start_offset*element_size+chunk_size*cid, 
+                                                                                (uint8_t *)dctx_ptr->host_tensor+start_offset*element_size+chunk_size*cid, 
+                                                                                chunk_size, cudaMemcpyHostToDevice, stream);
+                                                        }
+                                                    }                                                      
+                                                    previous_chunk[bid] = current_chunk;
+                                                }                                                
+                                            }
+#endif
+                                        }
                                         current_offset[bid] = meta_ptr[k];
                                         if (current_offset[bid]<omnireduce_par.getInfOffset(0))
                                         {
@@ -239,7 +456,17 @@ namespace omnireduce {
                                     {
                                         if (nonzero_block_num>0)
                                         {
-                                            ret = post_send_client(dctx_ptr, nonzero_block_num, current_offsets, next_offsets, slot+num_slots_per_thread*thread_id, wc[i].qp_num, buff_index[slot]);
+                                            if (devId<0)
+                                                ret = post_send_client(dctx_ptr, nonzero_block_num, current_offsets, next_offsets, slot+num_slots_per_thread*thread_id, wc[i].qp_num, buff_index[slot]);
+#ifdef USE_CUDA
+                                            else
+                                            {
+                                                if (async==false)
+                                                    ret = cuda_sync_post_send_client(dctx_ptr, nonzero_block_num, current_offsets, next_offsets, slot+num_slots_per_thread*thread_id, wc[i].qp_num, buff_index[slot]);
+                                                else
+                                                    ret = cuda_async_post_send_client(dctx_ptr, nonzero_block_num, current_offsets, next_offsets, slot+num_slots_per_thread*thread_id, wc[i].qp_num, buff_index[slot]);
+                                            }        
+#endif                                            
                                             if (ret)
                                             {
                                                 fprintf(stderr, "failed to post SR\n");
@@ -256,8 +483,21 @@ namespace omnireduce {
                         } //for (int i = 0; i < ne; ++i)
                     } //if (ne>0)
                 } //while (finished_slots<first_burst)
+#ifdef USE_CUDA
+                if (async==true)
+                {
+                    cudaMemcpyAsync((uint8_t *)tu.ptr+start_offset*element_size+chunk_size*(chunk_num-1), 
+                                        (uint8_t *)dctx_ptr->host_tensor+start_offset*element_size+chunk_size*(chunk_num-1), 
+                                        tensor_size*element_size-chunk_size*(chunk_num-1), cudaMemcpyHostToDevice, stream);
+                    cudaStreamSynchronize(stream);
+                }
+#endif            
                 while (!dctx_ptr->send_result(tu.id) && !force_quit)
                     ;
+#ifdef USE_CUDA           
+                if (async==true)
+                    cudaStreamDestroy(stream);
+#endif
             }//if (dctx_ptr->receive_tensor(tu, thread_id)) 
         }//while (!force_quit)
         return NULL;

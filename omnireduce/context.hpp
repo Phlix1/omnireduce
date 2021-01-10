@@ -7,6 +7,10 @@
 
 #include "omnireduce/common.hpp"
 
+#ifdef USE_CUDA
+#include <cuda_runtime.h>
+#endif
+
 namespace omnireduce {
     void *OmniMaster(void *ctx);
   
@@ -36,7 +40,13 @@ namespace omnireduce {
 
             void AllReduce(float*, int, uint8_t*, int);
             void AllReduce(int32_t*, int, uint8_t*, int);
-
+#ifdef USE_CUDA
+            void AllReduce(float*, int, uint8_t*, int, cudaStream_t, int);
+            void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int);
+            void AllReduce(float*, int, uint8_t*, int, cudaStream_t, int, bool);
+            void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int, bool);
+            void *host_tensor;
+#endif
             int workerId;
             int *socks;
             void *comm_buf;

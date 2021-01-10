@@ -67,6 +67,8 @@ namespace omnireduce {
         OpType op;
         uint8_t* bitmap_ptr;
         uint32_t block_count;
+        int32_t devId;
+        bool async;
     }; 
     extern volatile bool force_quit;
 }

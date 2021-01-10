@@ -160,6 +160,8 @@ namespace omnireduce {
         tu.op = ALLREDUCE;
         tu.bitmap_ptr = bitmap_ptr;
         tu.block_count = block_count;
+        tu.devId = -1;
+        tu.async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
     }
@@ -177,9 +179,90 @@ namespace omnireduce {
         tu.op = ALLREDUCE;
         tu.bitmap_ptr = bitmap_ptr;
         tu.block_count = block_count;
+        tu.devId = -1;
+        tu.async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
     }
+
+#ifdef USE_CUDA
+    void OmniContext::AllReduce(float *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId)
+    {  
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        TensorUpdate tu;
+        cudaMemcpy(host_tensor, ptr, count*sizeof(float), cudaMemcpyDeviceToHost);
+        tu.ptr = host_tensor;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = FLOAT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap_ptr;
+        tu.block_count = block_count;
+        tu.devId = devId;
+        tu.async = false;
+        send_tensor(&tu);
+        receive_result(tensor_id);
+        cudaMemcpy(ptr, host_tensor, count*sizeof(float), cudaMemcpyHostToDevice);      
+    }
+    void OmniContext::AllReduce(int32_t *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId)
+    {  
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        TensorUpdate tu;
+        cudaMemcpy(host_tensor, ptr, count*sizeof(int32_t), cudaMemcpyDeviceToHost);
+        tu.ptr = host_tensor;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = INT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap_ptr;
+        tu.block_count = block_count;
+        tu.devId = devId;
+        tu.async = false;
+        send_tensor(&tu);
+        receive_result(tensor_id);
+        cudaMemcpy(ptr, host_tensor, count*sizeof(int32_t), cudaMemcpyHostToDevice);      
+    }
+    void OmniContext::AllReduce(float *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId, bool async)
+    {
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        TensorUpdate tu;
+        tu.ptr = ptr;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = FLOAT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap_ptr;
+        tu.block_count = block_count;
+        tu.devId = devId;
+        tu.async = async;
+        send_tensor(&tu);
+        receive_result(tensor_id);        
+    }
+    void OmniContext::AllReduce(int32_t *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId, bool async)
+    {
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        TensorUpdate tu;
+        tu.ptr = ptr;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = INT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap_ptr;
+        tu.block_count = block_count;
+        tu.devId = devId;
+        tu.async = async;
+        send_tensor(&tu);
+        receive_result(tensor_id);
+    }
+#endif
 
     void OmniContext::init() {
         //step 1 - read and set para
@@ -278,7 +361,12 @@ namespace omnireduce {
         }   
         /* allocate the memory worker send/recv buffer */
         comm_buf_size = num_slots_per_thread*(message_size*2)*num_worker_threads*num_comm_buff;
+#ifdef USE_CUDA
+        ret = cudaMallocHost((void **)&comm_buf, comm_buf_size*buff_unit_size);
+        ret = cudaMallocHost((void **)&host_tensor, 1024*1024*1024);
+#else
         ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
+#endif
         if (ret!=0)
         {
             std::cerr<<"failed to malloc "<<comm_buf_size*buff_unit_size<<" bytes to communication memory buffer"<<std::endl;

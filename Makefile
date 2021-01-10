@@ -3,22 +3,31 @@ OMNIREDUCE_PATH = $(shell pwd)
 export OMNIREDUCE_PATH
 endif
 
-CC  := g++
-LD  := g++
 SOURCEDIR  := ${OMNIREDUCE_PATH}/omnireduce
 DESTDIR  := ${OMNIREDUCE_PATH}/build
 
 INCLUDE  :=-I ${OMNIREDUCE_PATH}
-LDFLAGS  := -shared -lstdc++ -fPIC
-LDLIBS  := -libverbs -lpthread -lboost_system -lboost_thread -lboost_chrono -lboost_program_options
-CXXFLAGS  := -Wall -Wextra -fPIC -O3 -std=c++11
+LDFLAGS  := -shared -lstdc++
+LDLIBS  := -libverbs -lboost_system -lboost_thread -lboost_chrono -lboost_program_options
+CXXFLAGS  := -O3 -std=c++11
+ifeq ($(USE_CUDA),ON)
+$(info "USE_CUDA ON")
+CXXFLAGS += -DUSE_CUDA --compiler-options -fPIC 
+CC  := nvcc
+LD  := nvcc
+else
+CXXFLAGS += -fPIC
+CC  := g++
+LD  := g++
+endif
+
 SOURCE:=${wildcard ${SOURCEDIR}/*.cpp}
 OBJS:=${patsubst ${SOURCEDIR}/%.cpp,${SOURCEDIR}/%.o,${SOURCE}}
 
 TARGET_LIB  := libomnireduce.so
 
 all:${OBJS}
-	${LD} ${LDFLAGS}  -o ${SOURCEDIR}/${TARGET_LIB} ${OBJS} ${LDLIBS}
+	${LD} ${LDFLAGS} -o ${SOURCEDIR}/${TARGET_LIB} ${OBJS} ${LDLIBS}
 	mkdir -p ${DESTDIR}/include/omnireduce
 	cp ${SOURCEDIR}/${TARGET_LIB} ${DESTDIR}
 	cp ${SOURCEDIR}/*.hpp ${DESTDIR}/include/omnireduce

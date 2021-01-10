@@ -2,8 +2,15 @@
 #include <unistd.h>
 #include <iostream>
 #include "mpi.h"
+#include <cuda_runtime.h>
 
 int main(int argc, char *argv[]) {
+    int devID=0;
+    cudaDeviceProp deviceProps;
+    cudaGetDeviceProperties(&deviceProps, devID);
+    cudaStream_t stream;
+    cudaStreamCreate(&stream);
+    printf("CUDA device [%s]\n", deviceProps.name);
     MPI_Init(&argc, &argv);
     int myrank=0, worldsize=1;
     MPI_Comm_size(MPI_COMM_WORLD, &worldsize);
@@ -16,8 +23,11 @@ int main(int argc, char *argv[]) {
     if (tensor_size%block_size!=0)
         block_count += 1;
     float *input = (float *)malloc(tensor_size*sizeof(float));
+    float *d_input;
+    cudaMalloc((void **)&d_input, tensor_size*sizeof(float));
+    cudaMemset(d_input, 0, tensor_size*sizeof(float));
     float *output = (float *)malloc(tensor_size*sizeof(float));
-    float *data = (float *)malloc(tensor_size*sizeof(float));
+    float *output_dev = (float *)malloc(tensor_size*sizeof(float));
     memset(input, 0, tensor_size*sizeof(int));
     uint8_t *bitmap = (uint8_t *)malloc(block_count*sizeof(uint8_t));
     double density_ratio = 1.0;
@@ -50,32 +60,38 @@ int main(int argc, char *argv[]) {
     unsigned long start_time_usec;
     unsigned long diff_time_usec;
     while(round<warmups) {
-        memcpy(data, input, sizeof(float)*tensor_size);
-        omniContext.AllReduce(data, tensor_size, bitmap, block_count);
+        cudaMemcpy(d_input, input, sizeof(float)*tensor_size, cudaMemcpyHostToDevice);
+        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true);
+        omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
         round++;
     }
+    
     round = 0;
     while (round<num_rounds) {
         if(myrank==0)
             std::cout<<"round: "<<round<<std::endl;
-        memcpy(data, input, sizeof(float)*tensor_size);
+        cudaMemcpy(d_input, input, sizeof(float)*tensor_size, cudaMemcpyHostToDevice);
         MPI_Barrier(MPI_COMM_WORLD);
         gettimeofday(&cur_time, NULL);
         start_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec);
-        omniContext.AllReduce(data, tensor_size, bitmap, block_count);
+        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true); 
+        omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
         gettimeofday(&cur_time, NULL);
         diff_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec) - start_time_usec;
         if(myrank==0)
             std::cout<<"tensor size:"<<tensor_size*4<<" Bytes; time: "<<diff_time_usec<<" us; alg bw: "<<tensor_size*4*1.0/(1024*1024*1024)/((double)diff_time_usec/1000000)<<" GB/s"<<std::endl;
         round++;
     }
+    cudaMemcpy(output_dev, d_input, sizeof(float)*tensor_size, cudaMemcpyDeviceToHost);
+    
     for(uint32_t i=0; i<tensor_size; i++)
-        if(data[i]!=output[i])
+        if(output_dev[i]!=output[i])
         {
-            std::cout<<"result check: error"<<std::endl;
-            std::cout<<i<<": "<<data[i]<<" "<<output[i]<<std::endl;
+            std::cout<<"rank: "<<myrank<<"; result check: error"<<std::endl;
+            std::cout<<i<<": "<<output_dev[i]<<" "<<output[i]<<std::endl;
             return 0;
         }
     std::cout<<"result check: ok"<<std::endl;
+    
     return 0;
 }
