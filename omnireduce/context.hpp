@@ -45,7 +45,10 @@ namespace omnireduce {
             void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int);
             void AllReduce(float*, int, uint8_t*, int, cudaStream_t, int, bool);
             void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int, bool);
+            void AllReduce(float*, int, cudaStream_t, int);
+            void AllReduce(int32_t*, int, cudaStream_t, int);
             void *host_tensor;
+            uint8_t *bitmap;
 #endif
             int workerId;
             int *socks;

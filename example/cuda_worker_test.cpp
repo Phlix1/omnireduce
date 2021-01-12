@@ -30,20 +30,20 @@ int main(int argc, char *argv[]) {
     float *output_dev = (float *)malloc(tensor_size*sizeof(float));
     memset(input, 0, tensor_size*sizeof(int));
     uint8_t *bitmap = (uint8_t *)malloc(block_count*sizeof(uint8_t));
-    double density_ratio = 1.0;
+    double density_ratio = 0.01;
     double rnum = 0;
     for(uint32_t i=0; i<block_count; i++)
     {
         rnum = rand()%100/(double)101;
         if (rnum < density_ratio && omniContext.workerId!=-1)
         {
-            bitmap[i] = 1;
+            bitmap[i] = 0;
         }
         else
         {
-            bitmap[i] = 0;
+            bitmap[i] = 1;
         }
-        if (bitmap[i]==1)
+        if (bitmap[i]==0)
         {
             for(uint32_t j=0; j<block_size; j++)
             {
@@ -62,7 +62,8 @@ int main(int argc, char *argv[]) {
     while(round<warmups) {
         cudaMemcpy(d_input, input, sizeof(float)*tensor_size, cudaMemcpyHostToDevice);
         //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true);
-        omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
+        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
+        omniContext.AllReduce(d_input, tensor_size, stream, 0);
         round++;
     }
     
@@ -75,7 +76,8 @@ int main(int argc, char *argv[]) {
         gettimeofday(&cur_time, NULL);
         start_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec);
         //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true); 
-        omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
+        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
+        omniContext.AllReduce(d_input, tensor_size, stream, 0);
         gettimeofday(&cur_time, NULL);
         diff_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec) - start_time_usec;
         if(myrank==0)

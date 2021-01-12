@@ -23,6 +23,8 @@ endif
 
 SOURCE:=${wildcard ${SOURCEDIR}/*.cpp}
 OBJS:=${patsubst ${SOURCEDIR}/%.cpp,${SOURCEDIR}/%.o,${SOURCE}}
+SOURCE:=${wildcard ${SOURCEDIR}/*.cu}
+OBJS+=${patsubst ${SOURCEDIR}/%.cu,${SOURCEDIR}/%.o,${SOURCE}}
 
 TARGET_LIB  := libomnireduce.so
 
@@ -33,6 +35,9 @@ all:${OBJS}
 	cp ${SOURCEDIR}/*.hpp ${DESTDIR}/include/omnireduce
 
 ${SOURCEDIR}/%.o:${SOURCEDIR}/%.cpp
+	${CC} -c ${CXXFLAGS} $< -o ${SOURCEDIR}/$*.o ${INCLUDE}
+
+${SOURCEDIR}/%.o:${SOURCEDIR}/%.cu
 	${CC} -c ${CXXFLAGS} $< -o ${SOURCEDIR}/$*.o ${INCLUDE}
 
 .PHONY: clean

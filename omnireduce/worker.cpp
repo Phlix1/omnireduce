@@ -35,7 +35,7 @@ namespace omnireduce {
         uint32_t max_index = omnireduce_par.getInfOffset(bid);
         while (next_nonzero_offset-start_offset<tensor_size && (next_nonzero_offset/block_size < tu.block_count))
         {
-            if (tu.bitmap_ptr[next_nonzero_offset/block_size]==1)
+            if (tu.bitmap_ptr[next_nonzero_offset/block_size]==0)
                 return next_nonzero_offset;
             next_nonzero_offset += num_slots_per_thread*message_size;
         }
@@ -439,7 +439,7 @@ namespace omnireduce {
                                         current_offset[bid] = meta_ptr[k];
                                         if (current_offset[bid]<omnireduce_par.getInfOffset(0))
                                         {
-                                            if (tu.bitmap_ptr[current_offset[bid]/block_size]==1)
+                                            if (tu.bitmap_ptr[current_offset[bid]/block_size]==0)
                                             {
                                                 current_offsets[nonzero_block_num] = current_offset[bid];
                                                 next_offsets[nonzero_block_num] = find_next_nonzero_block(current_offsets[nonzero_block_num]+message_size*num_slots_per_thread);

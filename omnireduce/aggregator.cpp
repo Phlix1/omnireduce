@@ -243,7 +243,8 @@ namespace omnireduce {
                                 {
                                     for(uint32_t j=0; j<completed_blocks[slot]; j++)
                                     {
-                                        if (block_next_offset[(next_offsets[slot][j]/block_size)%num_blocks_per_thread][k]==next_offsets[slot][j])
+                                        if (block_next_offset[(next_offsets[slot][j]/block_size)%num_blocks_per_thread][k]==next_offsets[slot][j]
+                                            && next_offsets[slot][j]<omnireduce_par.getInfOffset(0))
                                         {
                                             post_receive_server(dctx_ptr, global_slot, thread_id, slot_to_qps[slot][k]);
                                             break;

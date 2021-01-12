@@ -20,20 +20,20 @@ int main(int argc, char *argv[]) {
     float *data = (float *)malloc(tensor_size*sizeof(float));
     memset(input, 0, tensor_size*sizeof(int));
     uint8_t *bitmap = (uint8_t *)malloc(block_count*sizeof(uint8_t));
-    double density_ratio = 1.0;
+    double density_ratio = 0.01;
     double rnum = 0;
     for(uint32_t i=0; i<block_count; i++)
     {
         rnum = rand()%100/(double)101;
         if (rnum < density_ratio && omniContext.workerId!=-1)
         {
-            bitmap[i] = 1;
+            bitmap[i] = 0;
         }
         else
         {
-            bitmap[i] = 0;
+            bitmap[i] = 1;
         }
-        if (bitmap[i]==1)
+        if (bitmap[i]==0)
         {
             for(uint32_t j=0; j<block_size; j++)
             {

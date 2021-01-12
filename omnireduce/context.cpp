@@ -1,6 +1,6 @@
 #include "omnireduce/context.hpp"
 #include "omnireduce/omnireduce.hpp"
-
+#include "omnireduce/cuda_utils.hpp"
 
 namespace omnireduce {
     void *OmniMaster(void *ctx) {
@@ -228,6 +228,7 @@ namespace omnireduce {
     }
     void OmniContext::AllReduce(float *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId, bool async)
     {
+        cudaStreamSynchronize(stream);
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -246,6 +247,7 @@ namespace omnireduce {
     }
     void OmniContext::AllReduce(int32_t *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId, bool async)
     {
+        cudaStreamSynchronize(stream);
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -261,6 +263,60 @@ namespace omnireduce {
         tu.async = async;
         send_tensor(&tu);
         receive_result(tensor_id);
+    }
+    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId)
+    {
+        uint32_t block_size = omnireduce_par.getBlockSize();
+        uint32_t block_count = count/block_size;
+        if (count%block_size!=0)
+            block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
+        compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        TensorUpdate tu;
+        tu.ptr = ptr;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = FLOAT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap;
+        tu.block_count = block_count;
+        tu.devId = devId;
+        tu.async = true;
+        send_tensor(&tu);
+        receive_result(tensor_id);
+        cudaFree(d_bitmap);      
+    }
+    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
+    {
+        uint32_t block_size = omnireduce_par.getBlockSize();
+        uint32_t block_count = count/block_size;
+        if (count%block_size!=0)
+            block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
+        compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        TensorUpdate tu;
+        tu.ptr = ptr;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = INT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap;
+        tu.block_count = block_count;
+        tu.devId = devId;
+        tu.async = true;
+        send_tensor(&tu);
+        receive_result(tensor_id);
+        cudaFree(d_bitmap);
     }
 #endif
 
@@ -364,6 +420,7 @@ namespace omnireduce {
 #ifdef USE_CUDA
         ret = cudaMallocHost((void **)&comm_buf, comm_buf_size*buff_unit_size);
         ret = cudaMallocHost((void **)&host_tensor, 1024*1024*1024);
+        ret = cudaMallocHost((void **)&bitmap, 1024*1024*1024);
 #else
         ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
 #endif
