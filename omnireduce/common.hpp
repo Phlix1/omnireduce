@@ -69,6 +69,7 @@ namespace omnireduce {
         uint32_t block_count;
         int32_t devId;
         bool async;
+        bool bitmap_async;
     }; 
     extern volatile bool force_quit;
 }

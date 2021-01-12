@@ -1,6 +1,8 @@
 #include "omnireduce/context.hpp"
 #include "omnireduce/omnireduce.hpp"
+#ifdef USE_CUDA
 #include "omnireduce/cuda_utils.hpp"
+#endif
 
 namespace omnireduce {
     void *OmniMaster(void *ctx) {
@@ -162,6 +164,7 @@ namespace omnireduce {
         tu.block_count = block_count;
         tu.devId = -1;
         tu.async = false;
+        tu.bitmap_async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
     }
@@ -181,6 +184,7 @@ namespace omnireduce {
         tu.block_count = block_count;
         tu.devId = -1;
         tu.async = false;
+        tu.bitmap_async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
     }
@@ -202,6 +206,7 @@ namespace omnireduce {
         tu.block_count = block_count;
         tu.devId = devId;
         tu.async = false;
+        tu.bitmap_async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
         cudaMemcpy(ptr, host_tensor, count*sizeof(float), cudaMemcpyHostToDevice);      
@@ -222,6 +227,7 @@ namespace omnireduce {
         tu.block_count = block_count;
         tu.devId = devId;
         tu.async = false;
+        tu.bitmap_async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
         cudaMemcpy(ptr, host_tensor, count*sizeof(int32_t), cudaMemcpyHostToDevice);      
@@ -242,6 +248,7 @@ namespace omnireduce {
         tu.block_count = block_count;
         tu.devId = devId;
         tu.async = async;
+        tu.bitmap_async = false;
         send_tensor(&tu);
         receive_result(tensor_id);        
     }
@@ -261,19 +268,23 @@ namespace omnireduce {
         tu.block_count = block_count;
         tu.devId = devId;
         tu.async = async;
+        tu.bitmap_async = false;
         send_tensor(&tu);
         receive_result(tensor_id);
     }
-    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId)
+    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
         if (count%block_size!=0)
             block_count += 1;
         uint8_t *d_bitmap;
-        cudaMalloc((void **)&d_bitmap, block_count);
-        compute_bitmap(ptr, d_bitmap, count, block_size, stream);
-        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        if (bitmap_async==false)
+        {
+            cudaMalloc((void **)&d_bitmap, block_count);
+            compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+            cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        }
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -286,21 +297,26 @@ namespace omnireduce {
         tu.bitmap_ptr = bitmap;
         tu.block_count = block_count;
         tu.devId = devId;
-        tu.async = true;
+        tu.async = async;
+        tu.bitmap_async = bitmap_async;
         send_tensor(&tu);
         receive_result(tensor_id);
-        cudaFree(d_bitmap);      
+        if (bitmap_async==false)
+            cudaFree(d_bitmap);      
     }
-    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
+    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
         if (count%block_size!=0)
             block_count += 1;
         uint8_t *d_bitmap;
-        cudaMalloc((void **)&d_bitmap, block_count);
-        compute_bitmap(ptr, d_bitmap, count, block_size, stream);
-        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        if (bitmap_async==false)
+        {
+            cudaMalloc((void **)&d_bitmap, block_count);
+            compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+            cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        }
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -313,10 +329,12 @@ namespace omnireduce {
         tu.bitmap_ptr = bitmap;
         tu.block_count = block_count;
         tu.devId = devId;
-        tu.async = true;
+        tu.async = async;
+        tu.bitmap_async = bitmap_async;
         send_tensor(&tu);
         receive_result(tensor_id);
-        cudaFree(d_bitmap);
+        if (bitmap_async==false)
+            cudaFree(d_bitmap);
     }
 #endif
 

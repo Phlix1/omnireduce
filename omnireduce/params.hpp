@@ -35,6 +35,7 @@ namespace omnireduce {
             uint32_t num_qps_per_aggregator_per_thread;
             uint32_t num_slots_per_thread;
             uint32_t chunk_size;
+            uint32_t bitmap_chunk_size;
             uint32_t message_size;
             uint32_t block_size;
             uint32_t num_comm_buff;
@@ -79,6 +80,9 @@ namespace omnireduce {
             }
             void setChunkSize(uint32_t cs) {
                 chunk_size = cs;
+            }
+            void setBitmapChunkSize(uint32_t bcs) {
+                bitmap_chunk_size = bcs;
             }
             void setMessageSize(uint32_t ms) {
                 message_size = ms;
@@ -136,6 +140,9 @@ namespace omnireduce {
             }
             uint32_t getChunkSize() {
                 return chunk_size;
+            }
+            uint32_t getBitmapChunkSize() {
+                return bitmap_chunk_size;
             }
             uint32_t getMessageSize() {
                 return message_size;

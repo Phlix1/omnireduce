@@ -23,8 +23,11 @@ endif
 
 SOURCE:=${wildcard ${SOURCEDIR}/*.cpp}
 OBJS:=${patsubst ${SOURCEDIR}/%.cpp,${SOURCEDIR}/%.o,${SOURCE}}
+
+ifeq ($(USE_CUDA),ON)
 SOURCE:=${wildcard ${SOURCEDIR}/*.cu}
 OBJS+=${patsubst ${SOURCEDIR}/%.cu,${SOURCEDIR}/%.o,${SOURCE}}
+endif
 
 TARGET_LIB  := libomnireduce.so
 

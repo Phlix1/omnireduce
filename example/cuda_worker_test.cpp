@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
         cudaMemcpy(d_input, input, sizeof(float)*tensor_size, cudaMemcpyHostToDevice);
         //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true);
         //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
-        omniContext.AllReduce(d_input, tensor_size, stream, 0);
+        omniContext.AllReduce(d_input, tensor_size, stream, 0, true, false);
         round++;
     }
     
@@ -77,7 +77,7 @@ int main(int argc, char *argv[]) {
         start_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec);
         //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true); 
         //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
-        omniContext.AllReduce(d_input, tensor_size, stream, 0);
+        omniContext.AllReduce(d_input, tensor_size, stream, 0, true, false);
         gettimeofday(&cur_time, NULL);
         diff_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec) - start_time_usec;
         if(myrank==0)

@@ -12,7 +12,7 @@ namespace omnireduce {
     {
         std::string config_file;
         std::ifstream ifs;
-        uint32_t num_workers, num_aggregators, num_threads, chunk_size, message_size, block_size;
+        uint32_t num_workers, num_aggregators, num_threads, chunk_size, bitmap_chunk_size, message_size, block_size;
         int ib_port, gid_idx, sl;
         std::string worker_ip_str, aggregator_ips_str;
         po::options_description omnireduce_options("OmniReduce options");
@@ -22,6 +22,7 @@ namespace omnireduce {
             ("omnireduce.num_aggregators", po::value<uint32_t>(&num_aggregators)->default_value(1), "Number of workers")
             ("omnireduce.num_threads", po::value<uint32_t>(&num_threads)->default_value(1), "Number of threads")
             ("omnireduce.chunk_size", po::value<uint32_t>(&chunk_size)->default_value(4194304), "Chunk size")
+            ("omnireduce.bitmap_chunk_size", po::value<uint32_t>(&bitmap_chunk_size)->default_value(4194304), "Bitmap chunk size")
             ("omnireduce.message_size", po::value<uint32_t>(&message_size)->default_value(1024), "Message size")
             ("omnireduce.block_size", po::value<uint32_t>(&block_size)->default_value(1024), "Block size")
             ("omnireduce.ib_port", po::value<int>(&ib_port)->default_value(1), "IB port")
@@ -53,6 +54,7 @@ namespace omnireduce {
         omnireduce_par.setNumWorkers(num_workers);
         omnireduce_par.setNumAggregators(num_aggregators);
         omnireduce_par.setChunkSize(chunk_size);
+        omnireduce_par.setBitmapChunkSize(bitmap_chunk_size);
         omnireduce_par.setMessageSize(message_size);
         omnireduce_par.setBlockSize(block_size);
         omnireduce_par.setWorkerIps(worker_ip_str);
