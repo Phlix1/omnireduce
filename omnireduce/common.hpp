@@ -35,7 +35,7 @@ namespace omnireduce {
         int remoteId;
 	    uint64_t addr;   /* Buffer address */
 	    uint32_t rkey;   /* Remote key */
-	    uint32_t qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS]; /* QP number */
+	    uint32_t qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS+1]; /* QP number */
 	    uint16_t lid;	/* LID of the IB port */
 	    uint8_t gid[16]; /* gid */
     };
@@ -46,7 +46,7 @@ namespace omnireduce {
     	uint32_t num_peers;
     	uint64_t addr;   /* Buffer address */
     	uint32_t rkey;   /* Remote key */
-    	uint32_t qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS]; /* QP number */
+    	uint32_t qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS+1]; /* QP number */
     	uint16_t lid;	/* LID of the IB port */
     	uint8_t gid[16]; /* gid */
     } __attribute__((packed));

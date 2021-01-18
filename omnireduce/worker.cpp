@@ -27,6 +27,7 @@ namespace omnireduce {
     thread_local static uint32_t typecode;
 #ifdef USE_CUDA
     thread_local static cudaStream_t stream;
+    thread_local static cudaEvent_t event;
     thread_local static cudaEvent_t *events;
     thread_local static bool *chunk_finished;
     thread_local static uint32_t *chunk_completed;
@@ -603,4 +604,220 @@ namespace omnireduce {
         }//while (!force_quit)
         return NULL;
     } //worker
+
+    int dr_post_receive_client(OmniContext* dctx_ptr, uint32_t slot, uint32_t qp_num)
+    {
+        int rc=0;
+        struct ibv_recv_wr rr;
+        struct ibv_sge sge;
+        struct ibv_recv_wr *bad_wr;
+        int qid;
+        if (unlikely(qp_num==0))
+            qid = (slot/num_slots_per_thread)*num_qps_per_aggregator_per_thread*num_aggregators
+                    +slot%(num_qps_per_aggregator_per_thread*num_aggregators);
+        else
+            qid = qp_num_revert[qp_num];
+        memset(&sge, 0, sizeof(sge));
+#ifdef USE_CUDA
+        sge.addr = (uintptr_t)(dctx_ptr->cuda_comm_buf);
+#else
+        sge.addr = (uintptr_t)(dctx_ptr->comm_buf);
+#endif
+        sge.length = 0;
+        sge.lkey = dctx_ptr->mr->lkey;
+        memset(&rr, 0, sizeof(rr));
+        rr.wr_id = 0;
+        rr.sg_list = &sge;
+        rr.num_sge = 1;
+        rc = ibv_post_recv(dctx_ptr->qp[qid], &rr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post RR\n");
+        return rc;
+    }
+
+    int dr_post_send_client(OmniContext* dctx_ptr, uint32_t current_offset, uint32_t next_offset, uint32_t slot, uint32_t qp_num)
+    {
+        int rc=0;
+        struct ibv_send_wr sr;
+        struct ibv_sge sge;
+        struct ibv_send_wr *bad_wr = NULL;
+        int qid, mid;
+        uint32_t length = tensor_size - (current_offset-start_offset);
+        if (unlikely(qp_num==0)) 
+        {
+            qid = (slot/num_slots_per_thread)*num_qps_per_aggregator_per_thread*num_aggregators
+                    +slot%(num_qps_per_aggregator_per_thread*num_aggregators);
+            mid = qp_num_to_peerid[dctx_ptr->qp[qid]->qp_num];
+        }
+        else 
+        {
+	        qid = qp_num_revert[qp_num];
+	        mid = qp_num_to_peerid[qp_num];            
+        }
+        if (length>block_size)
+            length = block_size;
+        memset(&sge, 0, sizeof(sge));
+#ifdef USE_CUDA
+        uint8_t *tmp = (uint8_t *)(dctx_ptr->cuda_comm_buf)+current_offset*element_size;
+#else
+        uint8_t *tmp = (uint8_t *)(dctx_ptr->comm_buf)+current_offset*element_size;
+#endif
+        sge.addr = (uintptr_t)tmp;
+        sge.length = length*element_size;
+        sge.lkey = dctx_ptr->mr->lkey;
+        memset(&sr, 0, sizeof(sr));
+        sr.wr_id = 0;
+        sr.sg_list = &sge;
+        sr.num_sge = 1;
+        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        sr.send_flags = IBV_SEND_SIGNALED;
+        sr.wr.rdma.remote_addr =  dctx_ptr->remote_props_array[mid].addr+(block_size*slot
+                                    +block_size*num_slots_per_thread*num_worker_threads*dctx_ptr->workerId)*buff_unit_size;
+        sr.wr.rdma.rkey = dctx_ptr->remote_props_array[mid].rkey;
+        sr.imm_data = next_offset;
+        rc = ibv_post_send(dctx_ptr->qp[qid], &sr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post SR %d\n", rc);
+        return rc;
+    }
+
+    uint32_t dr_find_next_nonzero_block(uint32_t next_offset)
+    {
+        uint32_t next_nonzero_offset = next_offset;
+        uint32_t bid = (next_nonzero_offset/block_size)%num_slots_per_thread;
+        uint32_t max_index = omnireduce_par.getInfOffset(bid);
+        while (next_nonzero_offset-start_offset<tensor_size && (next_nonzero_offset/block_size < tu.block_count))
+        {
+            if (tu.bitmap_ptr[next_nonzero_offset/block_size]==0)
+                return next_nonzero_offset;
+            next_nonzero_offset += num_slots_per_thread*block_size;
+        }
+        return max_index;
+    }
+
+    void *dr_worker(void* arg) {
+        OmniContext* dctx_ptr = (OmniContext*) arg;
+        uint32_t total_num_msgs = 0;
+        uint32_t first_burst = 0;
+        int ret = 0;
+        uint32_t finished_slots = 0;
+        int ne = 0;
+        uint32_t slot = 0;
+        uint32_t bid = 0;
+        uint32_t next_offset = 0;
+        buff_unit_size = omnireduce_par.getBuffUnitSize();
+        num_worker_threads = omnireduce_par.getNumWorkerThreads();
+        block_size = omnireduce_par.getBlockSize();
+        chunk_size = omnireduce_par.getChunkSize();
+        num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
+        num_qps_per_aggregator_per_thread = omnireduce_par.getNumQpsPerAggTh();
+        num_aggregators = omnireduce_par.getNumAggregators();
+        prepost_recv_num = omnireduce_par.getPrepostRecvNum();
+        uint32_t *current_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
+        memset(current_offset, 0, sizeof(uint32_t)*num_slots_per_thread);
+        struct ibv_wc wc[MAX_CONCURRENT_WRITES * 2];
+        thread_id = dctx_ptr->threadid.fetch_add(1);
+        dctx_ptr->set_master_ready();
+        for (uint32_t i=0; i<num_slots_per_thread; i++)
+            for (uint32_t j=0; j<prepost_recv_num; j++)
+                dr_post_receive_client(dctx_ptr, i+num_slots_per_thread*thread_id, 0);
+        while (!force_quit)
+        {
+            if (dctx_ptr->receive_tensor(tu, thread_id))
+            {
+                finished_slots = 0;
+                
+                switch (tu.type)
+                {
+                    case INT32:
+                        typecode = INT32;
+                        element_size = sizeof(int32_t);
+                        break;
+                    case FLOAT32:
+                        typecode = FLOAT32;
+                        element_size = sizeof(float);
+                        break;
+                    default:
+                        std::cerr<<"Data type error"<<std::endl;
+                        exit(1);
+                }
+                devId = tu.devId;
+                async = tu.async;
+                start_offset = tu.start_idx;
+                tensor_size = tu.count;
+
+#ifdef USE_CUDA
+                cudaStreamCreate(&stream);
+                cudaEventCreate(&event);
+                cudaMemcpyAsync((uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size, 
+                                tensor_size*element_size, cudaMemcpyDeviceToDevice, stream);
+                cudaEventRecord(event, stream);
+                cudaEventSynchronize(event);
+#else
+                memcpy((uint8_t*)(dctx_ptr->comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size, tensor_size*element_size);
+#endif
+
+
+                total_num_msgs = tensor_size/block_size;
+                if (tensor_size%block_size != 0 && tensor_size>0)
+                    total_num_msgs++;
+                first_burst = (total_num_msgs < num_slots_per_thread) ? total_num_msgs:num_slots_per_thread;
+                for (uint32_t i=0; i<first_burst; i++)
+                {
+                    if (devId<0)
+                    {
+                        next_offset = dr_find_next_nonzero_block(start_offset+i*block_size+block_size*num_slots_per_thread);
+                        ret = dr_post_send_client(dctx_ptr, start_offset+i*block_size, next_offset, 
+                                                 (next_offset/block_size)%num_slots_per_thread+num_slots_per_thread*thread_id, 0);
+                    }
+                }
+                
+                int print_count=0;
+                while (finished_slots<first_burst && !force_quit)
+                {
+                    ne = ibv_poll_cq(dctx_ptr->cq[thread_id], MAX_CONCURRENT_WRITES * 2, (struct ibv_wc*)wc);
+                    if (ne>0)
+                    {
+                        for (int i = 0; i < ne; ++i)
+                        {
+                            if (wc[i].status == IBV_WC_SUCCESS)
+                            {
+                                if (wc[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM)
+                                {
+                                    uint32_t imm_data = wc[i].imm_data;
+                                    slot = (imm_data/block_size)%num_slots_per_thread;
+                                    dr_post_receive_client(dctx_ptr, slot, wc[i].qp_num);
+                                    if (imm_data<omnireduce_par.getInfOffset(0))
+                                    {
+                                        if (tu.bitmap_ptr[imm_data/block_size]==0) {
+                                            next_offset = dr_find_next_nonzero_block(imm_data+block_size*num_slots_per_thread);
+                                            ret = dr_post_send_client(dctx_ptr, imm_data, next_offset, slot+num_slots_per_thread*thread_id, wc[i].qp_num);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        finished_slots++;
+                                    }
+                                }
+                            }
+                        }
+                    } //if (ne>0)
+                } //while (finished_slots<first_burst && !force_quit)
+
+#ifdef USE_CUDA
+                cudaMemcpyAsync((uint8_t*)(tu.ptr)+start_offset*element_size, (uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, 
+                                tensor_size*element_size, cudaMemcpyDeviceToDevice, stream);
+                cudaEventRecord(event, stream);
+                cudaEventSynchronize(event);                
+                cudaStreamDestroy(stream);
+                cudaEventDestroy(event);
+#else
+                memcpy((uint8_t*)(tu.ptr)+start_offset*element_size, (uint8_t*)(dctx_ptr->comm_buf)+start_offset*element_size, tensor_size*element_size);
+#endif
+
+                while (!dctx_ptr->send_result(tu.id) && !force_quit);
+            } //if (dctx_ptr->receive_tensor(tu, thread_id))
+        } //while (!force_quit)
+        return NULL;             
+    } //dr_worker
 }

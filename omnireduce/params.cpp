@@ -12,7 +12,7 @@ namespace omnireduce {
     {
         std::string config_file;
         std::ifstream ifs;
-        uint32_t num_workers, num_aggregators, num_threads, chunk_size, bitmap_chunk_size, message_size, block_size;
+        uint32_t num_workers, num_aggregators, num_threads, chunk_size, bitmap_chunk_size, message_size, block_size, direct_memory;
         int ib_port, gid_idx, sl;
         std::string worker_ip_str, aggregator_ips_str;
         po::options_description omnireduce_options("OmniReduce options");
@@ -28,6 +28,7 @@ namespace omnireduce {
             ("omnireduce.ib_port", po::value<int>(&ib_port)->default_value(1), "IB port")
             ("omnireduce.gid_idx", po::value<int>(&gid_idx)->default_value(2), "GID")
             ("omnireduce.sl", po::value<int>(&sl)->default_value(2), "Service level")
+            ("omnireduce.direct_memory", po::value<uint32_t>(&direct_memory)->default_value(0), "Use direct memory")
             ("omnireduce.worker_ips", po::value<std::string>(&worker_ip_str)->default_value("10.0.0.1"), "Ip addresses of workers")
             ("omnireduce.aggregator_ips", po::value<std::string>(&aggregator_ips_str)->default_value("10.0.0.1"), "Ip addresses of aggregators");
         config_file_options.add(omnireduce_options);
@@ -66,6 +67,7 @@ namespace omnireduce {
         omnireduce_par.setIbPort(ib_port);
         omnireduce_par.setGidIdx(gid_idx);
         omnireduce_par.setServiceLevel(sl);
+        omnireduce_par.setDirectMemory(direct_memory);
     }
     omnireduce_params::omnireduce_params() {
         buff_unit_size = 4;

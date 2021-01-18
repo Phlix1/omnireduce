@@ -37,6 +37,7 @@ namespace omnireduce {
             void init();
             void StartMaster();
             void StopMaster();
+            void send_address(int, TensorUpdateType);
 
             void AllReduce(float*, int, uint8_t*, int);
             void AllReduce(int32_t*, int, uint8_t*, int);
@@ -47,18 +48,25 @@ namespace omnireduce {
             void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int, bool);
             void AllReduce(float*, int, cudaStream_t, int, bool, bool);
             void AllReduce(int32_t*, int, cudaStream_t, int, bool, bool);
+            void AllReduce(float*, int, cudaStream_t, int);
+            void AllReduce(int32_t*, int, cudaStream_t, int);
             void *host_tensor;
             uint8_t *bitmap;
 #endif
             int workerId;
             int *socks;
             void *comm_buf;
+            void *cuda_comm_buf;
             struct ibv_context *ib_ctx;
             struct ibv_port_attr port_attr;
             struct ibv_pd *pd;
             struct ibv_cq **cq;
             struct ibv_qp **qp;
+            struct ibv_cq *cq_address;
+            struct ibv_qp **qp_address;
             struct ibv_mr *mr;
+            uint32_t *src_;
+            struct ibv_mr *mr_;
             struct remote_con_data_t *remote_props_array;
             std::atomic_uint_fast32_t threadid;
             int ret;

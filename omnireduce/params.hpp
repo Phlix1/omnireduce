@@ -41,6 +41,7 @@ namespace omnireduce {
             uint32_t num_comm_buff;
             uint32_t prepost_recv_num;
             uint32_t *inf_offset;
+            uint32_t direct_memory;
             int ib_port;
             int gid_idx;
             int sl;
@@ -89,6 +90,9 @@ namespace omnireduce {
             }
             void setBlockSize(uint32_t bs) {
                 block_size = bs;
+            }
+            void setDirectMemory(uint32_t dm) {
+                direct_memory = dm;
             }
             void setWorkerIps(std::string workerIps) {
                 std::vector<std::string> ips;
@@ -149,6 +153,9 @@ namespace omnireduce {
             }
             uint32_t getBlockSize() {
                 return block_size;
+            }
+            uint32_t getDirectMemory() {
+                return direct_memory;
             }
             uint32_t getNumCommbuff() {
                 return num_comm_buff;

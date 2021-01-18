@@ -7,4 +7,5 @@
 
 namespace omnireduce {
     void *aggregator(void*);
+    void *dr_aggregator(void*);
 }

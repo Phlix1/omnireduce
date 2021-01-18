@@ -7,4 +7,5 @@
 
 namespace omnireduce {
     void *worker(void*);
+    void *dr_worker(void*); 
 }

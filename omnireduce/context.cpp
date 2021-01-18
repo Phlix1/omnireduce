@@ -149,8 +149,80 @@ namespace omnireduce {
         }
     }
 
+    void OmniContext::send_address(int count, TensorUpdateType typecode)
+    {
+        uint32_t num_aggregators = omnireduce_par.getNumAggregators();
+        int mr_flags = 0;
+        int ne = 0;
+        src_[0] = count;
+        src_[1] = typecode;
+        struct ibv_sge list;
+        list.addr = (uint64_t)src_;
+        list.length = 2*sizeof(uint32_t);
+        list.lkey = mr_->lkey;
+        struct ibv_send_wr wr;
+        struct ibv_recv_wr rwr;
+        memset(&rwr, 0, sizeof(rwr));
+        memset(&wr, 0, sizeof(wr));
+        wr.wr_id = 0;
+        wr.sg_list = &list;
+        wr.num_sge = 1;
+        wr.opcode = IBV_WR_SEND_WITH_IMM;
+        wr.send_flags = IBV_SEND_SIGNALED;
+        wr.imm_data = workerId;
+        struct ibv_send_wr* bad_wr = nullptr;
+        struct ibv_recv_wr* bad_rwr = nullptr;
+        for (uint32_t i=0; i<num_aggregators; i++)
+        {
+            ret = ibv_post_recv(qp_address[i], &rwr, &bad_rwr);
+            if (ret)
+            {
+                fprintf(stderr, "failed to post address RR %d\n", ret);
+            }
+        }
+        for (uint32_t i=0; i<num_aggregators; i++)
+        {
+            ret = ibv_post_send(qp_address[i], &wr, &bad_wr);
+            if (ret)
+            {
+                fprintf(stderr, "failed to post address SR %d\n", ret);
+            }
+        }
+        //poll completion
+        struct ibv_wc wc[MAX_CONCURRENT_WRITES * 2];
+        int ready_count = 0;
+        while (!force_quit)
+        {
+            ne = ibv_poll_cq(cq_address, MAX_CONCURRENT_WRITES * 2, (struct ibv_wc*)wc);
+            if (ne>0)
+            {
+                for (int i = 0; i < ne; ++i)
+                {
+                    if (wc[i].status == IBV_WC_SUCCESS)
+                    {
+                        if (wc[i].opcode == IBV_WC_RECV)
+                        {
+                            ready_count++;
+                        }
+                    }
+                    else
+                    {
+                        std::cout<<"error: "<<wc[i].status<<" "<<wc[i].opcode<<std::endl;
+                    }
+                }
+            }
+            if (ready_count>=num_aggregators)
+                break;
+        }
+    }
+
     void OmniContext::AllReduce(float *ptr, int count, uint8_t* bitmap_ptr, int block_count)
     {
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        if (direct_memory)
+        {
+            send_address(count, FLOAT32);
+        }
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -171,6 +243,11 @@ namespace omnireduce {
 
     void OmniContext::AllReduce(int32_t *ptr, int count, uint8_t* bitmap_ptr, int block_count)
     {
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        if (direct_memory)
+        {
+            send_address(count, INT32);
+        }
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -336,6 +413,88 @@ namespace omnireduce {
         if (bitmap_async==false)
             cudaFree(d_bitmap);
     }
+
+    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId)
+    {
+        uint32_t block_size = omnireduce_par.getBlockSize();
+        uint32_t block_count = count/block_size;
+        if (count%block_size!=0)
+            block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
+        compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        if (direct_memory)
+        {
+            send_address(count, FLOAT32);
+        }
+        else
+        {
+            std::cerr<<"Need to set GPU direct"<<std::endl;
+            exit(1);
+        }
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        //send tensor
+        TensorUpdate tu;
+        tu.ptr = ptr;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = FLOAT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap;
+        tu.block_count = block_count;
+        tu.devId = -1;
+        tu.async = false;
+        tu.bitmap_async = false;
+        send_tensor(&tu);       
+        //receive result
+        receive_result(tensor_id);
+        cudaFree(d_bitmap);
+    }
+
+    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
+    {
+        uint32_t block_size = omnireduce_par.getBlockSize();
+        uint32_t block_count = count/block_size;
+        if (count%block_size!=0)
+            block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
+        compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        if (direct_memory)
+        {
+            send_address(count, INT32);
+        }
+        else
+        {
+            std::cerr<<"Need to set GPU direct"<<std::endl;
+            exit(1);
+        }
+        int32_t tensor_id = tid_counter.fetch_add(1)+1;
+        //send tensor
+        TensorUpdate tu;
+        tu.ptr = ptr;
+        tu.count = count;
+        tu.start_idx = 0;
+        tu.id = tensor_id;
+        tu.root = 0;
+        tu.type = INT32;
+        tu.op = ALLREDUCE;
+        tu.bitmap_ptr = bitmap;
+        tu.block_count = block_count;
+        tu.devId = -1;
+        tu.async = false;
+        tu.bitmap_async = false;
+        send_tensor(&tu);       
+        //receive result
+        receive_result(tensor_id);
+        cudaFree(d_bitmap);
+    }
 #endif
 
     void OmniContext::init() {
@@ -347,6 +506,7 @@ namespace omnireduce {
         char *dev_name = NULL;
         struct ibv_device **dev_list = NULL;
         struct ibv_qp_init_attr *qp_init_attr = NULL;
+        struct ibv_qp_init_attr qp_address_attr;
         struct ibv_device *ib_dev = NULL;
         int ib_port = 1;
         int cq_size = 0;
@@ -359,6 +519,7 @@ namespace omnireduce {
         uint32_t num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
         uint32_t message_size = omnireduce_par.getMessageSize();
         uint32_t num_comm_buff = omnireduce_par.getNumCommbuff();
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
 
         set_num_worker_threads(omnireduce_par.getNumWorkerThreads());
 
@@ -432,29 +593,74 @@ namespace omnireduce {
                 std::cerr<<"failed to create CQ with "<<cq_size<<" entries"<<std::endl;
                 exit(1);
             }
-        }   
+        }
+        cq_address = ibv_create_cq(ib_ctx, cq_size, NULL, NULL, 0);
         /* allocate the memory worker send/recv buffer */
-        comm_buf_size = num_slots_per_thread*(message_size*2)*num_worker_threads*num_comm_buff;
-#ifdef USE_CUDA
-        ret = cudaMallocHost((void **)&comm_buf, comm_buf_size*buff_unit_size);
-        ret = cudaMallocHost((void **)&host_tensor, 1024*1024*1024);
-        ret = cudaMallocHost((void **)&bitmap, 1024*1024*1024);
-#else
-        ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
-#endif
-        if (ret!=0)
+        if (direct_memory)
         {
-            std::cerr<<"failed to malloc "<<comm_buf_size*buff_unit_size<<" bytes to communication memory buffer"<<std::endl;
-            exit(1);
+            comm_buf_size = 1024*1024*1024;
+#ifdef USE_CUDA
+            ret = cudaMalloc((void **)&cuda_comm_buf, comm_buf_size*buff_unit_size);
+            if (ret!=0)
+            {
+                std::cerr<<"failed to malloc "<<comm_buf_size*buff_unit_size<<" bytes to communication memory buffer"<<std::endl;
+                exit(1);
+            }            
+            /* register the memory buffer */
+            mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+            mr = ibv_reg_mr(pd, cuda_comm_buf, comm_buf_size*buff_unit_size, mr_flags);
+            if (!mr) {
+                std::cerr<<"ibv_reg_mr cuda_comm_buf failed with mr_flags="<<mr_flags<<std::endl;
+                exit(1);
+            }
+#else
+            ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
+            if (ret!=0)
+            {
+                std::cerr<<"failed to malloc "<<comm_buf_size*buff_unit_size<<" bytes to communication memory buffer"<<std::endl;
+                exit(1);
+            }
+            memset(comm_buf, 0, comm_buf_size*buff_unit_size);
+            /* register the memory buffer */
+            mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+            mr = ibv_reg_mr(pd, comm_buf, comm_buf_size*buff_unit_size, mr_flags);
+            if (!mr) {
+                std::cerr<<"ibv_reg_mr comm_buf failed with mr_flags="<<mr_flags<<std::endl;
+                exit(1);
+            }
+#endif
         }
-        memset(comm_buf, 0, comm_buf_size*buff_unit_size);
-        /* register the memory buffer */
-        mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
-        mr = ibv_reg_mr(pd, comm_buf, comm_buf_size*buff_unit_size, mr_flags);
-        if (!mr) {
-            std::cerr<<"ibv_reg_mr failed with mr_flags="<<mr_flags<<std::endl;
-            exit(1);
+        else
+        {
+            comm_buf_size = num_slots_per_thread*(message_size*2)*num_worker_threads*num_comm_buff;
+#ifdef USE_CUDA
+            ret = cudaMallocHost((void **)&comm_buf, comm_buf_size*buff_unit_size);
+            ret = cudaMallocHost((void **)&host_tensor, 1024*1024*1024);
+            ret = cudaMallocHost((void **)&bitmap, 1024*1024*1024);
+#else
+            ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
+#endif
+            memset(comm_buf, 0, comm_buf_size*buff_unit_size);
+            if (ret!=0)
+            {
+                std::cerr<<"failed to malloc "<<comm_buf_size*buff_unit_size<<" bytes to communication memory buffer"<<std::endl;
+                exit(1);
+            }
+            /* register the memory buffer */
+            mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
+            mr = ibv_reg_mr(pd, comm_buf, comm_buf_size*buff_unit_size, mr_flags);
+            if (!mr) {
+                std::cerr<<"ibv_reg_mr comm_buf failed with mr_flags="<<mr_flags<<std::endl;
+                exit(1);
+            }
         }
+        src_ = (uint32_t *)malloc(2*sizeof(uint32_t));
+        memset(src_, 0, 2*sizeof(uint32_t));
+        mr_ = ibv_reg_mr(pd, src_, 2*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
+        if (!mr_) {
+            std::cerr<<"ibv_reg_mr src_ failed with mr_flags="<<mr_flags<<std::endl;
+            exit(1);
+        }        
         /* create queue pair */
         qp_init_attr = (struct ibv_qp_init_attr *)malloc(num_worker_threads*sizeof(struct ibv_qp_init_attr));
         memset(qp_init_attr, 0, num_worker_threads*sizeof(ibv_qp_init_attr));
@@ -469,6 +675,16 @@ namespace omnireduce {
             qp_init_attr[i].cap.max_send_sge = 1;
             qp_init_attr[i].cap.max_recv_sge = 1;
         }
+        memset(&qp_address_attr, 0, sizeof(ibv_qp_init_attr));
+        qp_address_attr.qp_type = IBV_QPT_RC;
+        qp_address_attr.sq_sig_all = 1;
+        qp_address_attr.send_cq = cq_address;
+        qp_address_attr.recv_cq = cq_address;
+        qp_address_attr.cap.max_send_wr = QUEUE_DEPTH_DEFAULT;
+        qp_address_attr.cap.max_recv_wr = QUEUE_DEPTH_DEFAULT;
+        qp_address_attr.cap.max_send_sge = 1;
+        qp_address_attr.cap.max_recv_sge = 1;
+
         qp = (struct ibv_qp **)malloc(num_qps_per_thread*num_worker_threads*sizeof(struct ibv_qp *));
         for (size_t i=0; i<num_qps_per_thread*num_worker_threads; i++)
         {
@@ -479,6 +695,16 @@ namespace omnireduce {
                 exit(1);
             }
             qp_num_revert.insert(std::make_pair(qp[i]->qp_num, i));
+        }
+        qp_address = (struct ibv_qp **)malloc(num_aggregators*sizeof(struct ibv_qp *));
+        for (size_t i=0; i<num_aggregators; i++)
+        {
+            qp_address[i] = ibv_create_qp(pd, &qp_address_attr);
+            if (!qp_address[i])
+            {
+                std::cerr<<"failed to create QP: "<< qp_address[i]<<std::endl;
+                exit(1);
+            }                    
         }
     } // init()
 }

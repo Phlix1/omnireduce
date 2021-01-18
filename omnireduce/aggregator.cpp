@@ -132,7 +132,7 @@ namespace omnireduce {
         memset(set, 0, sizeof(uint32_t)*num_slots_per_thread);
         uint32_t *buff_index = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
         memset(buff_index, 0, sizeof(uint32_t)*num_slots_per_thread);
-     
+        dctx_ptr->set_master_ready();
         struct ibv_wc wc[MAX_CONCURRENT_WRITES * 2];
         for (uint32_t i=0; i<num_slots_per_thread*(num_workers/num_aggregators); i++)
             post_receive_server(dctx_ptr, i, thread_id, 0);
@@ -291,4 +291,213 @@ namespace omnireduce {
         } //while (!force_quit)
         return NULL;
     }//aggregator
+
+    int dr_post_receive_server(AggContext* dctx_ptr, uint32_t slot, uint32_t thread_id, uint32_t qp_num)
+    {
+        int rc;
+        struct ibv_recv_wr rr;
+        struct ibv_sge sge;
+        struct ibv_recv_wr *bad_wr;
+        int qid;
+        if (unlikely(qp_num==0))
+            qid = thread_id*num_qps_per_aggregator_per_thread*num_workers
+                    +slot%(num_qps_per_aggregator_per_thread*num_workers);
+        else
+            qid = qp_num_revert[qp_num];
+        memset(&sge, 0, sizeof(sge));
+        sge.addr = (uintptr_t)(dctx_ptr->comm_buf);
+        sge.length = block_size*element_size;
+        sge.lkey = dctx_ptr->mr->lkey;
+        memset(&rr, 0, sizeof(rr));
+        rr.wr_id = 0;
+        rr.sg_list = &sge;
+        rr.num_sge = 1;
+        rc = ibv_post_recv(dctx_ptr->qp[qid], &rr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post RR\n");
+        return rc;          
+    }
+
+    int dr_post_send_server(AggContext* dctx_ptr, uint32_t current_offset, uint32_t next_offset, uint32_t set, uint32_t slot, uint32_t qp_num)
+    {
+        int rc;
+        struct ibv_send_wr sr;
+        struct ibv_sge sge;
+        struct ibv_send_wr *bad_wr = NULL;
+        int qid;
+        int mid;
+        uint32_t length = dctx_ptr->tensor_size - current_offset;
+        if (length>block_size)
+            length = block_size;
+        qid = qp_num_revert[qp_num];
+        mid = qp_num_to_peerid[qp_num];
+        memset(&sge, 0, sizeof(sge));  
+        uint8_t *tmp = (uint8_t *)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set)
+                       +slot*block_size)*buff_unit_size;
+        sge.addr = (uintptr_t)tmp;
+        sge.length = length*element_size;
+        sge.lkey = dctx_ptr->mr->lkey;
+        memset(&sr, 0, sizeof(sr));
+        sr.wr_id = 0;
+        sr.sg_list = &sge;
+        sr.num_sge = 1;
+        sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+        sr.send_flags = IBV_SEND_SIGNALED;
+        sr.wr.rdma.remote_addr =  dctx_ptr->remote_props_array[mid].addr + current_offset*element_size;
+        sr.wr.rdma.rkey = dctx_ptr->remote_props_array[mid].rkey;
+        sr.imm_data = next_offset;
+        rc = ibv_post_send(dctx_ptr->qp[qid], &sr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post SR %d\n", rc);
+        return rc;        
+    }
+
+    void *dr_aggregator(void* arg) {
+        AggContext* dctx_ptr = (AggContext*) arg;
+        int ret = 0;
+        int ne = 0;
+        int worker_count = 0;
+        uint32_t wid = 0;
+        uint32_t next_offset = 0;
+        uint32_t slot = 0;
+        num_qps_per_aggregator_per_thread = omnireduce_par.getNumQpsPerAggTh();
+        num_server_threads = omnireduce_par.getNumWorkerThreads();
+        num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
+        thread_id = dctx_ptr->threadid.fetch_add(1);
+        num_workers = omnireduce_par.getNumWorkers();
+        block_size = omnireduce_par.getBlockSize();
+        buff_unit_size = omnireduce_par.getBuffUnitSize();
+        num_aggregators = omnireduce_par.getNumAggregators();
+        num_comm_buff = omnireduce_par.getNumCommbuff();
+
+        uint32_t **block_next_offset = (uint32_t **)malloc(sizeof(uint32_t *)*num_slots_per_thread);
+        for (uint32_t i=0; i<num_slots_per_thread; i++){
+            block_next_offset[i] = (uint32_t *)malloc(sizeof(uint32_t)*num_workers);
+            memset(block_next_offset[i], 0, sizeof(uint32_t)*num_workers);
+        }
+        uint32_t *min_next_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
+        memset(min_next_offset, 0, sizeof(uint32_t)*num_slots_per_thread);
+        uint32_t **slot_to_qps = (uint32_t **)malloc(sizeof(uint32_t *)*num_slots_per_thread);
+        for (uint32_t i=0; i<num_slots_per_thread; i++){
+            slot_to_qps[i] = (uint32_t *)malloc(sizeof(uint32_t)*num_workers);
+            memset(slot_to_qps[i], 0, sizeof(uint32_t)*num_workers);
+        }  
+        uint32_t *register_count = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
+        memset(register_count, 0, sizeof(uint32_t)*num_slots_per_thread);
+        uint32_t *set = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
+        memset(set, 0, sizeof(uint32_t)*num_slots_per_thread);
+        dctx_ptr->set_master_ready();
+
+        struct ibv_wc wc[MAX_CONCURRENT_WRITES * 2];
+        for (uint32_t i=0; i<num_slots_per_thread*(num_workers/num_aggregators); i++)
+            dr_post_receive_server(dctx_ptr, i, thread_id, 0);        
+        while (!force_quit)
+        {
+            ne = ibv_poll_cq(dctx_ptr->cq[thread_id], MAX_CONCURRENT_WRITES * 2, (struct ibv_wc*)wc);
+            if (ne>0)
+            {
+                for (int i = 0; i < ne; ++i)
+                {
+                    if (wc[i].status == IBV_WC_SUCCESS)
+                    {
+                        if (wc[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM)
+                        {
+                            element_size = dctx_ptr->element_size;
+                            next_offset = wc[i].imm_data;
+                            slot = (next_offset/block_size)%num_slots_per_thread;
+                            wid = qp_num_to_peerid[wc[i].qp_num];
+                            uint32_t global_slot = slot+num_slots_per_thread*thread_id;
+                            if (register_count[slot]<num_workers)
+                            {
+                                slot_to_qps[slot][wid] = wc[i].qp_num;
+                                register_count[slot]++;
+                            }
+                            switch (dctx_ptr->typecode)
+                            {
+                                case FLOAT32:
+                                    {
+                                        float *aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
+                                                                           +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
+                                        float *recv_buff_float32 = (float *)((uint8_t*)dctx_ptr->comm_buf+(wid*num_slots_per_thread*block_size*num_server_threads
+                                                                           +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
+                                        for(uint32_t k=0; k<block_size; k++){
+                                            aggregation_pool_float32[k] += recv_buff_float32[k];
+                                        }
+                                    }
+                                    break;
+                                case INT32:
+                                    {
+                                        int32_t *aggregation_pool_int32 = (int32_t *)((uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
+                                                                           +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(int32_t));
+                                        int32_t *recv_buff_int32 = (int32_t *)((uint8_t*)dctx_ptr->comm_buf+(wid*num_slots_per_thread*block_size*num_server_threads
+                                                                           +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(int32_t));
+                                        for(uint32_t k=0; k<block_size; k++){
+                                            aggregation_pool_int32[k] += recv_buff_int32[k];
+                                        }
+                                    }
+                                    break;
+                                default:
+                                    std::cerr<<"Data type error"<<std::endl;
+                                    exit(1);
+                            }
+                            block_next_offset[slot][wid] = next_offset;
+                            min_next_offset[slot] = block_next_offset[slot][0];
+                            for(uint32_t k=1; k<num_workers; k++){
+                                if (min_next_offset[slot] > block_next_offset[slot][k])
+                                    min_next_offset[slot] = block_next_offset[slot][k];
+                            }
+                            if(dctx_ptr->current_offset_thread[thread_id][slot]<min_next_offset[slot])
+                            {
+                                switch (dctx_ptr->typecode)
+                                {
+                                    case FLOAT32:
+                                        {
+                                            float *shadow_aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->comm_buf
+                                                                                +(num_slots_per_thread*block_size*num_server_threads*(num_workers+(set[slot]+1)%num_comm_buff)
+                                                                                +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
+                                            for(uint32_t k=0; k<block_size; k++){
+                                                shadow_aggregation_pool_float32[k] = 0.0;
+                                            }
+                                        }
+                                        break;
+                                    case INT32:
+                                        {
+                                            int32_t *shadow_aggregation_pool_int32 = (int32_t *)((uint8_t*)dctx_ptr->comm_buf
+                                                                                +(num_slots_per_thread*block_size*num_server_threads*(num_workers+(set[slot]+1)%num_comm_buff)
+                                                                                +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(int32_t));
+                                            for(uint32_t k=0; k<block_size; k++){
+                                                shadow_aggregation_pool_int32[k] = 0;
+                                            }    
+                                        }
+                                        break;
+                                    default:
+                                        std::cerr<<"Data type error"<<std::endl;
+                                        exit(1);
+                                }                       
+                                for(uint32_t k=0; k<num_workers; k++)
+                                {
+                                    if (min_next_offset[slot]==block_next_offset[slot][k])
+                                    {
+                                        ret = dr_post_receive_server(dctx_ptr, slot+num_slots_per_thread*thread_id, thread_id, slot_to_qps[slot][k]);
+                                    }
+                                    ret = dr_post_send_server(dctx_ptr, dctx_ptr->current_offset_thread[thread_id][slot], min_next_offset[slot], 
+                                                                set[slot], slot+num_slots_per_thread*thread_id, slot_to_qps[slot][k]);
+                                }
+                                if (min_next_offset[slot]<omnireduce_par.getInfOffset(0))
+                                {
+                                    dctx_ptr->current_offset_thread[thread_id][slot] = min_next_offset[slot];
+                                }
+                                else
+                                {
+                                    for(uint32_t k=0; k<num_workers; k++)
+                                        block_next_offset[slot][k] = 0;
+                                }                           
+                                set[slot] = (set[slot]+1)%num_comm_buff;                                                                         
+                            } //if(dctx_ptr->current_offset_thread[thread_id][slot]<min_next_offset[slot])
+                        }//if (wc[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM)
+                    } //if (wc[i].status == IBV_WC_SUCCESS)
+                } //for (int i = 0; i < ne; ++i)
+            } //if (ne>0)
+        } //while (!force_quit)
+    } //dr_aggregator
 }

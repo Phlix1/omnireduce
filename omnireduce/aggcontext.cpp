@@ -3,6 +3,47 @@
 
 
 namespace omnireduce {
+
+    int AggContext::post_receive_address(uint32_t workerId)
+    {
+        int rc = 0;
+        struct ibv_sge list;
+        list.addr = (uint64_t)srcs_[workerId];
+        list.length = 2*sizeof(uint32_t);
+        list.lkey = mrs_[workerId]->lkey;
+        struct ibv_recv_wr wr;
+        memset(&wr, 0, sizeof(wr));
+        wr.sg_list = &list;
+        wr.num_sge = 1;
+        struct ibv_recv_wr* bad_wr = nullptr;
+        rc = ibv_post_recv(qp_address[workerId], &wr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post address RR %d\n", rc);
+        return rc;
+    }
+
+    int AggContext::post_send_ready(uint32_t workerId)
+    {
+        int rc = 0;
+        struct ibv_sge list;
+        list.addr = (uint64_t)srcs_[workerId];
+        list.length = 0;
+        list.lkey = mrs_[workerId]->lkey;
+        struct ibv_send_wr wr;
+        memset(&wr, 0, sizeof(wr));
+        wr.wr_id = 0;
+        wr.sg_list = &list;
+        wr.num_sge = 1;
+        wr.opcode = IBV_WR_SEND_WITH_IMM;
+        wr.send_flags = IBV_SEND_SIGNALED;
+        wr.imm_data = workerId;
+        struct ibv_send_wr* bad_wr = nullptr;
+        rc = ibv_post_send(qp_address[workerId], &wr, &bad_wr);
+        if (rc)
+            fprintf(stderr, "failed to post ready %d\n", rc);
+        return rc;
+    }
+
     void *OmniAggregatorMaster(void *ctx) {
         AggContext* d_ctx_ptr = (AggContext *) ctx;
 
@@ -16,6 +57,22 @@ namespace omnireduce {
         init();
         StartMaster();
     }
+
+    void AggContext::wait_master_ready() {
+        boost::unique_lock<boost::mutex> lock(master_ready_mutex);
+
+        while (master_ready!=num_server_threads)
+            master_ready_event.wait(lock);
+    }    
+
+    void AggContext::set_master_ready() {
+
+        boost::unique_lock<boost::mutex> lock(master_ready_mutex);
+
+        if ((++master_ready) == num_server_threads)
+            master_ready_event.notify_one();
+    }
+
     void AggContext::StartMaster() {
         pthread_attr_t attr;
         cpu_set_t cpus;
@@ -27,7 +84,100 @@ namespace omnireduce {
             std::cerr<<"Error starting aggregator master thread"<<std::endl;
             exit(1);
         }
-        while (!force_quit);
+        wait_master_ready();
+        int ne=0;
+        int worker_count = 0;
+        uint32_t block_size = omnireduce_par.getBlockSize();
+        uint32_t num_workers = omnireduce_par.getNumWorkers();
+        uint32_t num_server_threads = omnireduce_par.getNumWorkerThreads();
+        uint32_t num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        struct ibv_wc wc[MAX_CONCURRENT_WRITES * 2];
+        if (direct_memory)
+        {
+            for (uint32_t i=0; i<num_workers; i++)
+            {
+                post_receive_address(i);
+            }
+        }
+        while (!force_quit)
+        {
+            if (direct_memory)
+            {
+                ne = ibv_poll_cq(cq_address, MAX_CONCURRENT_WRITES * 2, (struct ibv_wc*)wc);
+                if (ne>0)
+                {
+                    for (int i = 0; i < ne; ++i)
+                    {
+                        if (wc[i].status == IBV_WC_SUCCESS)
+                        {
+                            if (wc[i].opcode == IBV_WC_RECV)
+                            {
+                                worker_count++;
+                                if (worker_count==num_workers)
+                                {
+                                    uint32_t count = 0;
+                                    for (uint32_t w=0; w<num_workers; w++)
+                                    {
+                                        tensor_size = srcs_[w][0];
+                                        switch(srcs_[w][1])
+                                        {
+                                            case INT32:
+                                                typecode = INT32;
+                                                element_size = 4;
+                                                break;
+                                            case FLOAT32:
+                                                typecode = FLOAT32;
+                                                element_size = 4;
+                                                break;
+                                            default:
+                                                std::cerr<<"Data type error"<<std::endl;
+                                                exit(1);
+                                        }
+                                        //std::cout<<tensor_size<<" "<<typecode<<std::endl;
+                                    }
+                                    count = tensor_size;
+                                    uint32_t block_count = 0;
+                                    uint32_t start_offset = 0;
+                                    for (int t=num_server_threads-1; t>=0; t--)
+                                    {
+                                        uint32_t thread_count=0;
+                                        block_count = count/block_size;
+                                        if ((count%block_size)!=0)
+                                            block_count+=1;
+                                        if (t!=0)
+                                        {
+                                            if (block_count%num_server_threads>t)
+                                                block_count = block_count/num_server_threads+1;
+                                            else
+                                                block_count /= num_server_threads;
+                                            thread_count = block_count * block_size;                                        
+                                        }
+                                        else
+                                        {
+                                            thread_count = count - start_offset;
+                                        }
+                                        //std::cout<<"thread "<<t<<" start_offset "<<start_offset<<std::endl;
+                                        for (uint32_t c=0; c<num_slots_per_thread; c++)
+                                        {
+                                            uint32_t bid = ((start_offset+c*block_size)/block_size)%num_slots_per_thread;
+                                            current_offset_thread[t][bid] = start_offset+c*block_size;
+                                            //std::cout<<"slot "<<bid<<" current offset "<<start_offset+c*block_size<<std::endl;
+                                        }
+                                        start_offset += thread_count;                               
+                                    }
+                                    worker_count = 0;
+                                    for (uint32_t w=0; w<num_workers; w++)
+                                        post_receive_address(w);
+                                    for (uint32_t w=0; w<num_workers; w++)
+                                        post_send_ready(w);
+                                }
+                            }
+                        }
+                    }
+                }
+            } //if (direct_memory)
+        } //while (!force_quit)
     }
     void AggContext::StopMaster() {
         force_quit = true;
@@ -52,6 +202,7 @@ namespace omnireduce {
         char *dev_name = NULL;
         struct ibv_device **dev_list = NULL;
         struct ibv_qp_init_attr *qp_init_attr = NULL;
+        struct ibv_qp_init_attr qp_address_attr;
         struct ibv_device *ib_dev = NULL;
         int ib_port = 1;
         int cq_size = 0;
@@ -63,6 +214,8 @@ namespace omnireduce {
         uint32_t num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
         uint32_t message_size = omnireduce_par.getMessageSize();
         uint32_t num_comm_buff = omnireduce_par.getNumCommbuff();
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        uint32_t block_size = omnireduce_par.getBlockSize();
         num_server_threads = omnireduce_par.getNumWorkerThreads();
         size_t comm_buf_size = 0;
         remote_props_array = (struct remote_con_data_t *)malloc(num_workers*sizeof(struct remote_con_data_t));
@@ -134,8 +287,17 @@ namespace omnireduce {
                 exit(1);
             }
         }
+        cq_address = ibv_create_cq(ib_ctx, cq_size, NULL, NULL, 0);
         /* allocate the memory worker send/recv buffer */
-        comm_buf_size = num_slots_per_thread*(message_size*2)*num_server_threads*(num_comm_buff+num_workers)+num_slots_per_thread*message_size*num_server_threads*2;
+        current_offset_thread = (uint32_t **)malloc(sizeof(uint32_t*)*num_server_threads);
+        for (size_t i=0; i<num_server_threads; i++)
+        {
+            current_offset_thread[i] = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
+        }
+        if (direct_memory)
+            comm_buf_size = num_slots_per_thread*block_size*num_server_threads*(num_workers+num_comm_buff);
+        else
+            comm_buf_size = num_slots_per_thread*(message_size*2)*num_server_threads*(num_comm_buff+num_workers)+num_slots_per_thread*message_size*num_server_threads*2;
         ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
         if (ret!=0)
         {
@@ -144,6 +306,18 @@ namespace omnireduce {
         }
         memset(comm_buf, 0, comm_buf_size*buff_unit_size);
         /* register the memory buffer */
+        srcs_ = (uint32_t **)malloc(sizeof(uint32_t*)*num_workers);
+        mrs_ = (struct ibv_mr **)malloc(sizeof(struct ibv_mr*)*num_workers);
+        for (uint32_t i=0; i<num_workers; i++)
+        {
+            srcs_[i] = (uint32_t *)malloc(2*sizeof(uint32_t));
+            memset(srcs_[i], 0, 2*sizeof(uint32_t));
+            mrs_[i] = ibv_reg_mr(pd, srcs_[i], 2*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
+            if (!mrs_[i]) {
+                std::cerr<<"ibv_reg_mr failed with mr_flags="<<mr_flags<<std::endl;
+                exit(1);
+            }            
+        }    
         mr_flags = IBV_ACCESS_LOCAL_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_REMOTE_WRITE;
         mr = ibv_reg_mr(pd, comm_buf, comm_buf_size*buff_unit_size, mr_flags);
         if (!mr) {
@@ -164,6 +338,16 @@ namespace omnireduce {
             qp_init_attr[i].cap.max_send_sge = 1;
             qp_init_attr[i].cap.max_recv_sge = 1;
         }
+        memset(&qp_address_attr, 0, sizeof(ibv_qp_init_attr));
+        qp_address_attr.qp_type = IBV_QPT_RC;
+        qp_address_attr.sq_sig_all = 1;
+        qp_address_attr.send_cq = cq_address;
+        qp_address_attr.recv_cq = cq_address;
+        qp_address_attr.cap.max_send_wr = QUEUE_DEPTH_DEFAULT;
+        qp_address_attr.cap.max_recv_wr = QUEUE_DEPTH_DEFAULT;
+        qp_address_attr.cap.max_send_sge = 1;
+        qp_address_attr.cap.max_recv_sge = 1;
+
         qp = (struct ibv_qp **)malloc(num_qps_per_thread*num_server_threads*sizeof(struct ibv_qp *));
         for (size_t i=0; i<num_qps_per_thread*num_server_threads; i++)
         {
@@ -174,6 +358,16 @@ namespace omnireduce {
                 exit(1);
             }
             qp_num_revert.insert(std::make_pair(qp[i]->qp_num, i));
+        }
+        qp_address = (struct ibv_qp **)malloc(num_workers*sizeof(struct ibv_qp *));
+        for (size_t i=0; i<num_workers; i++)
+        {
+            qp_address[i] = ibv_create_qp(pd, &qp_address_attr);
+            if (!qp_address[i])
+            {
+                std::cerr<<"failed to create QP: "<< qp_address[i]<<std::endl;
+                exit(1);
+            }            
         }
     }// init
 }

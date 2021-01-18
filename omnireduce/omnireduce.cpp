@@ -108,6 +108,7 @@ namespace omnireduce {
         uint32_t num_aggregators = omnireduce_par.getNumAggregators();
         uint32_t num_qps_per_aggregator_per_thread = omnireduce_par.getNumQpsPerAggTh();
         uint32_t num_qps_per_thread = num_qps_per_aggregator_per_thread*num_aggregators;
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
         int ib_port = omnireduce_par.getIbPort();
         int gid_idx = omnireduce_par.getGidIdx();
         int sl = omnireduce_par.getServiceLevel();
@@ -184,6 +185,7 @@ namespace omnireduce {
             {
                 local_con_datas[i].qp_num[j] = htonl(dctx_ptr->qp[j]->qp_num);
             }
+            local_con_datas[i].qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS] = htonl(dctx_ptr->qp_address[i]->qp_num);
             local_con_datas[i].lid = htons(dctx_ptr->port_attr.lid);
             memcpy(local_con_datas[i].gid, &my_gid, 16);
         }
@@ -206,6 +208,7 @@ namespace omnireduce {
             dctx_ptr->remote_props_array[i].rkey = ntohl(tmp_con_data.rkey);
             for(size_t j=0; j<num_workers*num_qps_per_aggregator_per_thread*num_worker_threads; j++)
                 dctx_ptr->remote_props_array[i].qp_num[j] = ntohl(tmp_con_data.qp_num[j]);
+            dctx_ptr->remote_props_array[i].qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS] = ntohl(tmp_con_data.qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS]);
             dctx_ptr->remote_props_array[i].lid = ntohs(tmp_con_data.lid);
             memcpy(dctx_ptr->remote_props_array[i].gid, tmp_con_data.gid, 16);
         }
@@ -235,6 +238,29 @@ namespace omnireduce {
             }
         }
 
+        for (uint32_t i=0; i<num_aggregators; i++)
+        {
+            ret = modify_qp_to_init(dctx_ptr->qp_address[i], ib_port);
+            if (ret)
+            {
+                fprintf(stderr, "change QP state to INIT failed\n");
+                exit(1);
+            }
+            ret = modify_qp_to_rtr(dctx_ptr->qp_address[i], dctx_ptr->remote_props_array[i].qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS], 
+                            dctx_ptr->remote_props_array[i].lid, dctx_ptr->remote_props_array[i].gid, sl, ib_port, gid_idx);
+            if (ret)
+            {
+                fprintf(stderr, "failed to modify QP state to RTR\n");
+                exit(1);
+            }
+            ret = modify_qp_to_rts(dctx_ptr->qp_address[i]);
+            if (ret)
+            {
+                fprintf(stderr, "failed to modify QP state to RTR\n");
+                exit(1);
+            }            
+        }
+
         //step 3 - Sync
         char temp_char;
 	    for (uint32_t i=0; i<num_aggregators; i++)
@@ -258,15 +284,29 @@ namespace omnireduce {
             CPU_ZERO(&cpus);
             CPU_SET(11+i, &cpus);
             pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-            if (pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr)) 
+            if (direct_memory)
             {
-                std::cerr<<"Error starting master thread"<<std::endl;
-                exit(1);
+                if (pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr))
+                {
+                    std::cerr<<"Error starting master thread"<<std::endl;
+                    exit(1);
+                }
+            }
+            else
+            {
+                if (pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr))
+                {
+                    std::cerr<<"Error starting master thread"<<std::endl;
+                    exit(1);
+                }
             }
         }
         
         //start worker on master
-        (*worker)(dctx_ptr);
+        if (direct_memory)
+            (*dr_worker)(dctx_ptr);
+        else
+            (*worker)(dctx_ptr);
         //join slave threads
         for (uint32_t i=0; i<num_slave_threads; i++)
             pthread_join(slaveThreads[i], NULL);
@@ -283,6 +323,7 @@ namespace omnireduce {
         uint32_t num_aggregators = omnireduce_par.getNumAggregators();
         uint32_t num_qps_per_aggregator_per_thread = omnireduce_par.getNumQpsPerAggTh();
         uint32_t num_qps_per_thread = num_qps_per_aggregator_per_thread*num_workers;
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
         int ib_port = omnireduce_par.getIbPort();
         int gid_idx = omnireduce_par.getGidIdx();
         int sl = omnireduce_par.getServiceLevel();
@@ -373,6 +414,7 @@ namespace omnireduce {
             {
                 local_con_datas[i].qp_num[j] = htonl(dctx_ptr->qp[j]->qp_num);
             }
+            local_con_datas[i].qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS] = htonl(dctx_ptr->qp_address[i]->qp_num);
             local_con_datas[i].lid = htons(dctx_ptr->port_attr.lid);
             memcpy(local_con_datas[i].gid, &my_gid, 16);
         }
@@ -395,6 +437,7 @@ namespace omnireduce {
             dctx_ptr->remote_props_array[i].rkey = ntohl(tmp_con_data.rkey);
             for(size_t j=0; j<num_aggregators*num_qps_per_aggregator_per_thread*num_server_threads; j++)
                 dctx_ptr->remote_props_array[i].qp_num[j] = ntohl(tmp_con_data.qp_num[j]);
+            dctx_ptr->remote_props_array[i].qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS] = ntohl(tmp_con_data.qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS]);
             dctx_ptr->remote_props_array[i].lid = ntohs(tmp_con_data.lid);
             memcpy(dctx_ptr->remote_props_array[i].gid, tmp_con_data.gid, 16);                    
         }
@@ -423,6 +466,28 @@ namespace omnireduce {
                 exit(1);
             }
         }
+        for (uint32_t i=0; i<num_workers; i++)
+        {
+            ret = modify_qp_to_init(dctx_ptr->qp_address[i], ib_port);
+            if (ret)
+            {
+                fprintf(stderr, "change QP state to INIT failed\n");
+                exit(1);
+            }
+            ret = modify_qp_to_rtr(dctx_ptr->qp_address[i], dctx_ptr->remote_props_array[i].qp_num[MAX_NUM_AGGS*MAX_NUM_QPS*MAX_NUM_THREADS], 
+                            dctx_ptr->remote_props_array[i].lid, dctx_ptr->remote_props_array[i].gid, sl, ib_port, gid_idx);
+            if (ret)
+            {
+                fprintf(stderr, "failed to modify QP state to RTR\n");
+                exit(1);
+            }
+            ret = modify_qp_to_rts(dctx_ptr->qp_address[i]);
+            if (ret)
+            {
+                fprintf(stderr, "failed to modify QP state to RTR\n");
+                exit(1);
+            }            
+        }
         
         //step 3 - Sync
         char temp_char;
@@ -446,15 +511,29 @@ namespace omnireduce {
         {
             CPU_ZERO(&cpus);
             CPU_SET(9+i, &cpus);
-            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);            
-            if (pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr)) 
+            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+            if (direct_memory)
             {
-                std::cerr<<"Error starting master thread"<<std::endl;
-                exit(1);
+                if (pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr)) 
+                {
+                    std::cerr<<"Error starting master thread"<<std::endl;
+                    exit(1);
+                }
+            }
+            else
+            {
+                if (pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr))
+                {
+                    std::cerr<<"Error starting master thread"<<std::endl;
+                    exit(1);                    
+                }
             }
         }
         //start aggregator on master
-        (*aggregator)(dctx_ptr);
+        if (direct_memory)
+            (*dr_aggregator)(dctx_ptr);
+        else
+            (*aggregator)(dctx_ptr);
         //join slave threads
         for (uint32_t i=0; i<num_slave_threads; i++)
             pthread_join(slaveThreads[i], NULL);
