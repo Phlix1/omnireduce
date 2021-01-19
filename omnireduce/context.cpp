@@ -360,8 +360,10 @@ namespace omnireduce {
         {
             cudaMalloc((void **)&d_bitmap, block_count);
             compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+            cudaStreamSynchronize(stream);
             cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
         }
+        
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         tu.ptr = ptr;
@@ -392,6 +394,7 @@ namespace omnireduce {
         {
             cudaMalloc((void **)&d_bitmap, block_count);
             compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+            cudaStreamSynchronize(stream);
             cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
         }
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
@@ -423,6 +426,7 @@ namespace omnireduce {
         uint8_t *d_bitmap;
         cudaMalloc((void **)&d_bitmap, block_count);
         compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+        cudaStreamSynchronize(stream);
         cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
         if (direct_memory)
@@ -464,6 +468,7 @@ namespace omnireduce {
         uint8_t *d_bitmap;
         cudaMalloc((void **)&d_bitmap, block_count);
         compute_bitmap(ptr, d_bitmap, count, block_size, stream);
+        cudaStreamSynchronize(stream);
         cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
         if (direct_memory)
