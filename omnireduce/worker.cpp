@@ -764,12 +764,9 @@ namespace omnireduce {
                 first_burst = (total_num_msgs < num_slots_per_thread) ? total_num_msgs:num_slots_per_thread;
                 for (uint32_t i=0; i<first_burst; i++)
                 {
-                    if (devId<0)
-                    {
-                        next_offset = dr_find_next_nonzero_block(start_offset+i*block_size+block_size*num_slots_per_thread);
-                        ret = dr_post_send_client(dctx_ptr, start_offset+i*block_size, next_offset, 
+                    next_offset = dr_find_next_nonzero_block(start_offset+i*block_size+block_size*num_slots_per_thread);
+                    ret = dr_post_send_client(dctx_ptr, start_offset+i*block_size, next_offset, 
                                                  (next_offset/block_size)%num_slots_per_thread+num_slots_per_thread*thread_id, 0);
-                    }
                 }
                 
                 int print_count=0;
@@ -799,6 +796,10 @@ namespace omnireduce {
                                         finished_slots++;
                                     }
                                 }
+                            }
+                            else
+                            {
+                                std::cout<<"error code "<<wc[i].status<<" operation code "<<wc[i].opcode<<std::endl;
                             }
                         }
                     } //if (ne>0)

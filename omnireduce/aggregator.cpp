@@ -496,6 +496,10 @@ namespace omnireduce {
                             } //if(dctx_ptr->current_offset_thread[thread_id][slot]<min_next_offset[slot])
                         }//if (wc[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM)
                     } //if (wc[i].status == IBV_WC_SUCCESS)
+                    else
+                    {
+                        std::cout<<"error code "<<wc[i].status<<" operation code "<<wc[i].opcode<<std::endl;
+                    }
                 } //for (int i = 0; i < ne; ++i)
             } //if (ne>0)
         } //while (!force_quit)

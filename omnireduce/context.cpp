@@ -126,7 +126,8 @@ namespace omnireduce {
         CPU_ZERO(&cpus);
         CPU_SET(10, &cpus);
         pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-        if (pthread_create(&masterThread, &attr, OmniMaster, this)) {
+        //if (pthread_create(&masterThread, &attr, OmniMaster, this)) {
+        if (pthread_create(&masterThread, NULL, OmniMaster, this)) {
             std::cerr<<"Error starting master thread"<<std::endl;
             exit(1);
         }
@@ -606,6 +607,7 @@ namespace omnireduce {
             comm_buf_size = 1024*1024*1024;
 #ifdef USE_CUDA
             ret = cudaMalloc((void **)&cuda_comm_buf, comm_buf_size*buff_unit_size);
+            ret = cudaMallocHost((void **)&bitmap, 1024*1024*1024);
             if (ret!=0)
             {
                 std::cerr<<"failed to malloc "<<comm_buf_size*buff_unit_size<<" bytes to communication memory buffer"<<std::endl;

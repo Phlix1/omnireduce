@@ -179,7 +179,18 @@ namespace omnireduce {
         {
             local_con_datas[i].remoteId = i;
             local_con_datas[i].num_peers = num_aggregators;
-            local_con_datas[i].addr = htonll((uintptr_t)(dctx_ptr->comm_buf));
+            if (direct_memory)
+            {
+#ifdef USE_CUDA
+                local_con_datas[i].addr = htonll((uintptr_t)(dctx_ptr->cuda_comm_buf));
+#else
+                local_con_datas[i].addr = htonll((uintptr_t)(dctx_ptr->comm_buf));
+#endif
+            }
+            else
+            {
+                local_con_datas[i].addr = htonll((uintptr_t)(dctx_ptr->comm_buf));
+            }     
             local_con_datas[i].rkey = htonl(dctx_ptr->mr->rkey);
             for(size_t j=0; j<num_qps_per_thread*num_worker_threads; j++)
             {
@@ -286,17 +297,19 @@ namespace omnireduce {
             pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
             if (direct_memory)
             {
-                if (pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr))
+                //if (pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr))
+                if (pthread_create(&(slaveThreads[i]), NULL, dr_worker, dctx_ptr))
                 {
-                    std::cerr<<"Error starting master thread"<<std::endl;
+                    std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
             }
             else
             {
-                if (pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr))
+                //if (pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr))
+                if (pthread_create(&(slaveThreads[i]), NULL, worker, dctx_ptr))
                 {
-                    std::cerr<<"Error starting master thread"<<std::endl;
+                    std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
             }
@@ -514,17 +527,19 @@ namespace omnireduce {
             pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
             if (direct_memory)
             {
-                if (pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr)) 
+                //if (pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr)) 
+                if (pthread_create(&(slaveThreads[i]), NULL, dr_aggregator, dctx_ptr)) 
                 {
-                    std::cerr<<"Error starting master thread"<<std::endl;
+                    std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
             }
             else
             {
-                if (pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr))
+                //if (pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr))
+                if (pthread_create(&(slaveThreads[i]), NULL, aggregator, dctx_ptr)) 
                 {
-                    std::cerr<<"Error starting master thread"<<std::endl;
+                    std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);                    
                 }
             }
