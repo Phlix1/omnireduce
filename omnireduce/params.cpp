@@ -51,6 +51,14 @@ namespace omnireduce {
         //std::cout<<"num threads: "<<num_threads<<"; message size: "<<message_size<<"; block size: "<<block_size<<std::endl;
         //std::cout<<"worker ips: "<<worker_ip_str<<std::endl;
         //std::cout<<"aggregator ips: "<<aggregator_ips_str<<std::endl;
+        if(direct_memory==1)
+        {
+            if(message_size!=block_size)
+            {
+                std::cerr<<"Message size must be equal to block size when using Direct Memory"<<std::endl;
+                exit(1);
+            }
+        }
         omnireduce_par.setNumWorkerThreads(num_threads);
         omnireduce_par.setNumWorkers(num_workers);
         omnireduce_par.setNumAggregators(num_aggregators);

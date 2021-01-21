@@ -46,8 +46,10 @@ namespace omnireduce {
             void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int);
             void AllReduce(float*, int, uint8_t*, int, cudaStream_t, int, bool);
             void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int, bool);
-            void AllReduce(float*, int, cudaStream_t, int, bool, bool);
-            void AllReduce(int32_t*, int, cudaStream_t, int, bool, bool);
+            void AllReduce_NGDR(float*, int, cudaStream_t, int, bool, bool);
+            void AllReduce_NGDR(int32_t*, int, cudaStream_t, int, bool, bool);
+            void AllReduce_GDR(float*, int, cudaStream_t, int);
+            void AllReduce_GDR(int32_t*, int, cudaStream_t, int);
             void AllReduce(float*, int, cudaStream_t, int);
             void AllReduce(int32_t*, int, cudaStream_t, int);
             void *host_tensor;

@@ -350,7 +350,7 @@ namespace omnireduce {
         send_tensor(&tu);
         receive_result(tensor_id);
     }
-    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
+    void OmniContext::AllReduce_NGDR(float *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
@@ -384,7 +384,7 @@ namespace omnireduce {
         if (bitmap_async==false)
             cudaFree(d_bitmap);      
     }
-    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
+    void OmniContext::AllReduce_NGDR(int32_t *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
@@ -418,7 +418,7 @@ namespace omnireduce {
             cudaFree(d_bitmap);
     }
 
-    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId)
+    void OmniContext::AllReduce_GDR(float *ptr, int count, cudaStream_t stream, int devId)
     {
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
@@ -460,7 +460,7 @@ namespace omnireduce {
         cudaFree(d_bitmap);
     }
 
-    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
+    void OmniContext::AllReduce_GDR(int32_t *ptr, int count, cudaStream_t stream, int devId)
     {
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
@@ -500,6 +500,34 @@ namespace omnireduce {
         //receive result
         receive_result(tensor_id);
         cudaFree(d_bitmap);
+    }
+
+    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
+    {
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        cudaSetDevice(devId);
+        if (direct_memory)
+        {
+            AllReduce_GDR(ptr, count, stream, devId);
+        }
+        else
+        {
+            AllReduce_NGDR(ptr, count, stream, devId, true, false);
+        }     
+    }
+
+    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId)
+    {
+        uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        cudaSetDevice(devId);
+        if (direct_memory)
+        {
+            AllReduce_GDR(ptr, count, stream, devId);
+        }
+        else
+        {
+            AllReduce_NGDR(ptr, count, stream, devId, true, false);
+        }     
     }
 #endif
 
