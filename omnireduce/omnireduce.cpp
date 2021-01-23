@@ -306,7 +306,7 @@ namespace omnireduce {
             }
             else
             {
-                ret = pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr);
+                ret = pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr);
                 if (ret) {
                 //if (pthread_create(&(slaveThreads[i]), NULL, worker, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
