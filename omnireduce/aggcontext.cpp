@@ -78,10 +78,10 @@ namespace omnireduce {
         cpu_set_t cpus;
         pthread_attr_init(&attr);
         CPU_ZERO(&cpus);
-        CPU_SET(8, &cpus);
+        CPU_SET(omnireduce_par.getAggregatorCoreId(0), &cpus);
         pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-        //if (pthread_create(&aggmasterThread, &attr, OmniAggregatorMaster, this)) {
-        if (pthread_create(&aggmasterThread, NULL, OmniAggregatorMaster, this)) {
+        if (pthread_create(&aggmasterThread, &attr, OmniAggregatorMaster, this)) {
+        //if (pthread_create(&aggmasterThread, NULL, OmniAggregatorMaster, this)) {
             std::cerr<<"Error starting aggregator master thread"<<std::endl;
             exit(1);
         }

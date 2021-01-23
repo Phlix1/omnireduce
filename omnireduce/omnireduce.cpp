@@ -293,22 +293,22 @@ namespace omnireduce {
         for (uint32_t i=0; i<num_slave_threads; i++) 
         {
             CPU_ZERO(&cpus);
-            CPU_SET(11+i, &cpus);
+            CPU_SET(omnireduce_par.getWorkerCoreId(1+i), &cpus);
             pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
             if (direct_memory)
             {
-                //if (pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr))
-                if (pthread_create(&(slaveThreads[i]), NULL, dr_worker, dctx_ptr))
-                {
-                    std::cerr<<"Error starting slave thread"<<std::endl;
+                ret = pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr);
+                if (ret) {
+                //if (pthread_create(&(slaveThreads[i]), NULL, dr_worker, dctx_ptr)) {
+                    std::cerr<<"Error starting slave thread "<<ret<<std::endl;
                     exit(1);
                 }
             }
             else
             {
-                //if (pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr))
-                if (pthread_create(&(slaveThreads[i]), NULL, worker, dctx_ptr))
-                {
+                ret = pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr);
+                if (ret) {
+                //if (pthread_create(&(slaveThreads[i]), NULL, worker, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
@@ -523,22 +523,22 @@ namespace omnireduce {
         for (uint32_t i=0; i<num_slave_threads; i++) 
         {
             CPU_ZERO(&cpus);
-            CPU_SET(9+i, &cpus);
+            CPU_SET(omnireduce_par.getAggregatorCoreId(i+1), &cpus);
             pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
             if (direct_memory)
             {
-                //if (pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr)) 
-                if (pthread_create(&(slaveThreads[i]), NULL, dr_aggregator, dctx_ptr)) 
-                {
+                ret = pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr);
+                if (ret) {
+                //if (pthread_create(&(slaveThreads[i]), NULL, dr_aggregator, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
             }
             else
             {
-                //if (pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr))
-                if (pthread_create(&(slaveThreads[i]), NULL, aggregator, dctx_ptr)) 
-                {
+                ret = pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr);
+                if (ret) {
+                //if (pthread_create(&(slaveThreads[i]), NULL, aggregator, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);                    
                 }

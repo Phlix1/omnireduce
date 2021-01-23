@@ -8,6 +8,7 @@
 
 int main(int argc, char *argv[]) {
     int devID=0;
+    cudaSetDevice(devID);
     cudaDeviceProp deviceProps;
     cudaGetDeviceProperties(&deviceProps, devID);
     cudaStream_t stream;
@@ -64,10 +65,7 @@ int main(int argc, char *argv[]) {
     unsigned long diff_time_usec;
     while(round<warmups) {
         cudaMemcpy(d_input, input, sizeof(DATA_TYPE)*tensor_size, cudaMemcpyHostToDevice);
-        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true);
-        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
-        omniContext.AllReduce(d_input, tensor_size, stream, 0, true, false);
-        //omniContext.AllReduce(d_input, tensor_size, stream, 0);
+        omniContext.AllReduce(d_input, tensor_size, stream, devID);
         round++;
     }
     
@@ -79,10 +77,7 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         gettimeofday(&cur_time, NULL);
         start_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec);
-        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, 0, true); 
-        //omniContext.AllReduce(d_input, tensor_size, bitmap, block_count, stream, -1);
-        omniContext.AllReduce(d_input, tensor_size, stream, 0, true, false);
-        //omniContext.AllReduce(d_input, tensor_size, stream, 0);
+        omniContext.AllReduce(d_input, tensor_size, stream, devID);
         gettimeofday(&cur_time, NULL);
         diff_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec) - start_time_usec;
         if(myrank==0)

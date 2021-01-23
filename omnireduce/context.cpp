@@ -120,15 +120,17 @@ namespace omnireduce {
     }
 
     void OmniContext::StartMaster() {
+        int ret = 0;
         pthread_attr_t attr;
         cpu_set_t cpus;
         pthread_attr_init(&attr);
         CPU_ZERO(&cpus);
-        CPU_SET(10, &cpus);
+        CPU_SET(omnireduce_par.getWorkerCoreId(0), &cpus);
         pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-        //if (pthread_create(&masterThread, &attr, OmniMaster, this)) {
-        if (pthread_create(&masterThread, NULL, OmniMaster, this)) {
-            std::cerr<<"Error starting master thread"<<std::endl;
+        ret = pthread_create(&masterThread, &attr, OmniMaster, this);
+        if (ret) {
+        //if (pthread_create(&masterThread, NULL, OmniMaster, this)) {
+            std::cerr<<"Error starting master thread "<<ret<<std::endl;
             exit(1);
         }
 

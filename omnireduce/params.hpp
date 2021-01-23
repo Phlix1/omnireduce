@@ -48,6 +48,8 @@ namespace omnireduce {
             int sl;
             char **aggregator_ipaddr;
             char **worker_ipaddr;
+            int *worker_cores;
+            int *aggregator_cores;
         public:
             omnireduce_params();
             ~omnireduce_params();
@@ -125,6 +127,34 @@ namespace omnireduce {
                     strcpy(aggregator_ipaddr[i], ips[i].c_str());
                 } 
             }
+            void setWorkerCoreId(std::string cores_str) {
+                std::vector<std::string> coreids;
+                boost::split(coreids, cores_str, boost::is_any_of(","));
+                if(num_worker_threads!=coreids.size())
+                {
+                    std::cerr<<"core id set error!"<<std::endl;
+                    exit(1);
+                }
+                worker_cores = (int *)malloc(num_worker_threads*sizeof(int));
+                for (uint32_t i=0; i<num_worker_threads; i++)
+                {
+                    worker_cores[i] = std::stoi(coreids[i]);
+                }
+            }
+            void setAggregatorCoreId(std::string cores_str) {
+                std::vector<std::string> coreids;
+                boost::split(coreids, cores_str, boost::is_any_of(","));
+                if(num_worker_threads!=coreids.size())
+                {
+                    std::cerr<<"core id set error!"<<std::endl;
+                    exit(1);
+                }
+                aggregator_cores = (int *)malloc(num_worker_threads*sizeof(int));
+                for (uint32_t i=0; i<num_worker_threads; i++)
+                {
+                    aggregator_cores[i] = std::stoi(coreids[i]);
+                }
+            }
             void setGpuDeviceId(uint32_t devId) {
                 gpu_devId = devId;
             }
@@ -175,6 +205,12 @@ namespace omnireduce {
             }
             char *getWorkerIP(uint32_t i) {
                 return worker_ipaddr[i];
+            }
+            int getWorkerCoreId(uint32_t i) {
+                return worker_cores[i];
+            }
+            int getAggregatorCoreId(uint32_t i) {
+                return aggregator_cores[i];
             }
             int getIbPort() {
                 return ib_port;

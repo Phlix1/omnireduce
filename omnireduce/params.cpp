@@ -14,13 +14,15 @@ namespace omnireduce {
         std::ifstream ifs;
         uint32_t num_workers, num_aggregators, num_threads, chunk_size, bitmap_chunk_size, message_size, block_size, direct_memory, gpu_devId;
         int ib_port, gid_idx, sl;
-        std::string worker_ip_str, aggregator_ips_str;
+        std::string worker_ip_str, aggregator_ips_str, worker_cores, aggregator_cores;
         po::options_description omnireduce_options("OmniReduce options");
         po::options_description config_file_options;
         omnireduce_options.add_options()
             ("omnireduce.num_workers", po::value<uint32_t>(&num_workers)->default_value(1), "Number of workers")
             ("omnireduce.num_aggregators", po::value<uint32_t>(&num_aggregators)->default_value(1), "Number of workers")
             ("omnireduce.num_threads", po::value<uint32_t>(&num_threads)->default_value(1), "Number of threads")
+            ("omnireduce.worker_cores", po::value<std::string>(&worker_cores)->default_value("none"), "core id for each thread")
+            ("omnireduce.aggregator_cores", po::value<std::string>(&aggregator_cores)->default_value("none"), "core id for each thread")
             ("omnireduce.chunk_size", po::value<uint32_t>(&chunk_size)->default_value(4194304), "Chunk size")
             ("omnireduce.bitmap_chunk_size", po::value<uint32_t>(&bitmap_chunk_size)->default_value(4194304), "Bitmap chunk size")
             ("omnireduce.message_size", po::value<uint32_t>(&message_size)->default_value(1024), "Message size")
@@ -61,6 +63,8 @@ namespace omnireduce {
             }
         }
         omnireduce_par.setNumWorkerThreads(num_threads);
+        omnireduce_par.setWorkerCoreId(worker_cores);
+        omnireduce_par.setAggregatorCoreId(aggregator_cores);
         omnireduce_par.setNumWorkers(num_workers);
         omnireduce_par.setNumAggregators(num_aggregators);
         omnireduce_par.setChunkSize(chunk_size);
