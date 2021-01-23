@@ -42,6 +42,7 @@ namespace omnireduce {
             uint32_t prepost_recv_num;
             uint32_t *inf_offset;
             uint32_t direct_memory;
+            uint32_t gpu_devId;
             int ib_port;
             int gid_idx;
             int sl;
@@ -124,6 +125,9 @@ namespace omnireduce {
                     strcpy(aggregator_ipaddr[i], ips[i].c_str());
                 } 
             }
+            void setGpuDeviceId(uint32_t devId) {
+                gpu_devId = devId;
+            }
             uint32_t getBuffUnitSize() {
                 return buff_unit_size;
             }
@@ -180,6 +184,9 @@ namespace omnireduce {
             }
             int getServiceLevel() {
                 return sl;
+            }
+            uint32_t getGpuDeviceId() {
+                return gpu_devId;
             }
     };
 

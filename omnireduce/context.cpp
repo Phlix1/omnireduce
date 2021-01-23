@@ -269,7 +269,8 @@ namespace omnireduce {
 
 #ifdef USE_CUDA
     void OmniContext::AllReduce(float *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId)
-    {  
+    {
+        cudaSetDevice(devId);
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         cudaMemcpy(host_tensor, ptr, count*sizeof(float), cudaMemcpyDeviceToHost);
@@ -290,7 +291,8 @@ namespace omnireduce {
         cudaMemcpy(ptr, host_tensor, count*sizeof(float), cudaMemcpyHostToDevice);      
     }
     void OmniContext::AllReduce(int32_t *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId)
-    {  
+    {
+        cudaSetDevice(devId);
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
         cudaMemcpy(host_tensor, ptr, count*sizeof(int32_t), cudaMemcpyDeviceToHost);
@@ -312,6 +314,7 @@ namespace omnireduce {
     }
     void OmniContext::AllReduce(float *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId, bool async)
     {
+        cudaSetDevice(devId);
         cudaStreamSynchronize(stream);
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
@@ -332,6 +335,7 @@ namespace omnireduce {
     }
     void OmniContext::AllReduce(int32_t *ptr, int count, uint8_t* bitmap_ptr, int block_count, cudaStream_t stream, int devId, bool async)
     {
+        cudaSetDevice(devId);
         cudaStreamSynchronize(stream);
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         TensorUpdate tu;
@@ -352,6 +356,7 @@ namespace omnireduce {
     }
     void OmniContext::AllReduce_NGDR(float *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
+        cudaSetDevice(devId);
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
         if (count%block_size!=0)
@@ -386,6 +391,7 @@ namespace omnireduce {
     }
     void OmniContext::AllReduce_NGDR(int32_t *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
+        cudaSetDevice(devId);
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
         if (count%block_size!=0)
@@ -420,6 +426,7 @@ namespace omnireduce {
 
     void OmniContext::AllReduce_GDR(float *ptr, int count, cudaStream_t stream, int devId)
     {
+        cudaSetDevice(devId);
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
         if (count%block_size!=0)
@@ -462,6 +469,7 @@ namespace omnireduce {
 
     void OmniContext::AllReduce_GDR(int32_t *ptr, int count, cudaStream_t stream, int devId)
     {
+        cudaSetDevice(devId);
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
         if (count%block_size!=0)
@@ -504,6 +512,12 @@ namespace omnireduce {
 
     void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
     {
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        if (gpu_devId!=devId)
+        {
+            std::cerr<<"Use GPU:"<<devId<<" but set GPU:"<<gpu_devId<<std::endl;
+            exit(1);
+        }
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
         cudaSetDevice(devId);
         if (direct_memory)
@@ -518,6 +532,12 @@ namespace omnireduce {
 
     void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream, int devId)
     {
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        if (gpu_devId!=devId)
+        {
+            std::cerr<<"Use GPU:"<<devId<<" but set GPU:"<<gpu_devId<<std::endl;
+            exit(1);
+        }
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
         cudaSetDevice(devId);
         if (direct_memory)
@@ -554,6 +574,7 @@ namespace omnireduce {
         uint32_t message_size = omnireduce_par.getMessageSize();
         uint32_t num_comm_buff = omnireduce_par.getNumCommbuff();
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
 
         set_num_worker_threads(omnireduce_par.getNumWorkerThreads());
 
@@ -634,6 +655,7 @@ namespace omnireduce {
         {
             comm_buf_size = 1024*1024*1024;
 #ifdef USE_CUDA
+            cudaSetDevice(gpu_devId);
             ret = cudaMalloc((void **)&cuda_comm_buf, comm_buf_size*buff_unit_size);
             ret = cudaMallocHost((void **)&bitmap, 1024*1024*1024);
             if (ret!=0)
@@ -669,6 +691,7 @@ namespace omnireduce {
         {
             comm_buf_size = num_slots_per_thread*(message_size*2)*num_worker_threads*num_comm_buff;
 #ifdef USE_CUDA
+            cudaSetDevice(gpu_devId);
             ret = cudaMallocHost((void **)&comm_buf, comm_buf_size*buff_unit_size);
             ret = cudaMallocHost((void **)&host_tensor, 1024*1024*1024);
             ret = cudaMallocHost((void **)&bitmap, 1024*1024*1024);
