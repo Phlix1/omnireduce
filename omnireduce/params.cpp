@@ -12,7 +12,7 @@ namespace omnireduce {
     {
         std::string config_file;
         std::ifstream ifs;
-        uint32_t num_workers, num_aggregators, num_threads, chunk_size, bitmap_chunk_size, message_size, block_size, direct_memory, gpu_devId;
+        uint32_t num_workers, num_aggregators, num_threads, chunk_size, bitmap_chunk_size, message_size, block_size, direct_memory, adaptive_blocksize, gpu_devId;
         int ib_port, gid_idx, sl;
         std::string worker_ip_str, aggregator_ips_str, worker_cores, aggregator_cores;
         po::options_description omnireduce_options("OmniReduce options");
@@ -32,6 +32,7 @@ namespace omnireduce {
             ("omnireduce.sl", po::value<int>(&sl)->default_value(2), "Service level")
             ("omnireduce.gpu_devId", po::value<uint32_t>(&gpu_devId)->default_value(0), "GPU device ID")
             ("omnireduce.direct_memory", po::value<uint32_t>(&direct_memory)->default_value(0), "Use direct memory")
+            ("omnireduce.adaptive_blocksize", po::value<uint32_t>(&adaptive_blocksize)->default_value(0), "Use adaptive block size")
             ("omnireduce.worker_ips", po::value<std::string>(&worker_ip_str)->default_value("10.0.0.1"), "Ip addresses of workers")
             ("omnireduce.aggregator_ips", po::value<std::string>(&aggregator_ips_str)->default_value("10.0.0.1"), "Ip addresses of aggregators");
         config_file_options.add(omnireduce_options);
@@ -81,6 +82,7 @@ namespace omnireduce {
         omnireduce_par.setGidIdx(gid_idx);
         omnireduce_par.setServiceLevel(sl);
         omnireduce_par.setDirectMemory(direct_memory);
+        omnireduce_par.setAdaptiveBlockSize(adaptive_blocksize);
         omnireduce_par.setGpuDeviceId(gpu_devId);
     }
     omnireduce_params::omnireduce_params() {

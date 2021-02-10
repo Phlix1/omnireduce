@@ -154,14 +154,16 @@ namespace omnireduce {
 
     void OmniContext::send_address(int count, TensorUpdateType typecode)
     {
+        uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t num_aggregators = omnireduce_par.getNumAggregators();
         int mr_flags = 0;
         int ne = 0;
         src_[0] = count;
         src_[1] = typecode;
+        src_[2] = block_size;
         struct ibv_sge list;
         list.addr = (uint64_t)src_;
-        list.length = 2*sizeof(uint32_t);
+        list.length = 3*sizeof(uint32_t);
         list.lkey = mr_->lkey;
         struct ibv_send_wr wr;
         struct ibv_recv_wr rwr;
@@ -521,13 +523,33 @@ namespace omnireduce {
             exit(1);
         }
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        uint32_t adaptive_blocksize = omnireduce_par.getAdaptiveBlockSize();
         cudaSetDevice(devId);
         if (direct_memory)
         {
+            if (adaptive_blocksize)
+            {
+                //set block size here
+                uint32_t block_size = 256;
+                omnireduce_par.setBlockSize(block_size);
+                omnireduce_par.setMessageSize(block_size);
+                uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh();
+                omnireduce_par.setInfOffset(num_blocks_per_thread);
+            }
             AllReduce_GDR(ptr, count, stream, devId);
         }
         else
         {
+            if (adaptive_blocksize)
+            {
+                //set block size here
+                uint32_t block_size = 256;
+                omnireduce_par.setBlockSize(block_size);
+                uint32_t message_size = omnireduce_par.getMessageSize();
+                uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh()*(message_size/block_size);
+                omnireduce_par.setInfOffset(num_blocks_per_thread);
+                send_address(count, INT32);
+            }
             AllReduce_NGDR(ptr, count, stream, devId, true, false);
         }     
     }
@@ -541,13 +563,33 @@ namespace omnireduce {
             exit(1);
         }
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        uint32_t adaptive_blocksize = omnireduce_par.getAdaptiveBlockSize();
         cudaSetDevice(devId);
         if (direct_memory)
         {
+            if (adaptive_blocksize)
+            {
+                //set block size here
+                uint32_t block_size = 256;
+                omnireduce_par.setBlockSize(block_size);
+                omnireduce_par.setMessageSize(block_size);
+                uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh();
+                omnireduce_par.setInfOffset(num_blocks_per_thread);
+            }
             AllReduce_GDR(ptr, count, stream, devId);
         }
         else
         {
+            if (adaptive_blocksize)
+            {
+                //set block size here
+                uint32_t block_size = 256;
+                omnireduce_par.setBlockSize(block_size);
+                uint32_t message_size = omnireduce_par.getMessageSize();
+                uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh()*(message_size/block_size);
+                omnireduce_par.setInfOffset(num_blocks_per_thread);
+                send_address(count, FLOAT32);
+            }
             AllReduce_NGDR(ptr, count, stream, devId, true, false);
         }     
     }
@@ -714,9 +756,9 @@ namespace omnireduce {
                 exit(1);
             }
         }
-        src_ = (uint32_t *)malloc(2*sizeof(uint32_t));
-        memset(src_, 0, 2*sizeof(uint32_t));
-        mr_ = ibv_reg_mr(pd, src_, 2*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
+        src_ = (uint32_t *)malloc(3*sizeof(uint32_t));
+        memset(src_, 0, 3*sizeof(uint32_t));
+        mr_ = ibv_reg_mr(pd, src_, 3*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
         if (!mr_) {
             std::cerr<<"ibv_reg_mr src_ failed with mr_flags="<<mr_flags<<std::endl;
             exit(1);

@@ -42,6 +42,7 @@ namespace omnireduce {
             uint32_t prepost_recv_num;
             uint32_t *inf_offset;
             uint32_t direct_memory;
+            uint32_t adaptive_blocksize;
             uint32_t gpu_devId;
             int ib_port;
             int gid_idx;
@@ -96,6 +97,9 @@ namespace omnireduce {
             }
             void setDirectMemory(uint32_t dm) {
                 direct_memory = dm;
+            }
+            void setAdaptiveBlockSize(uint32_t ab) {
+                adaptive_blocksize = ab;
             }
             void setWorkerIps(std::string workerIps) {
                 std::vector<std::string> ips;
@@ -190,6 +194,9 @@ namespace omnireduce {
             }
             uint32_t getDirectMemory() {
                 return direct_memory;
+            }
+            uint32_t getAdaptiveBlockSize() {
+                return adaptive_blocksize;
             }
             uint32_t getNumCommbuff() {
                 return num_comm_buff;

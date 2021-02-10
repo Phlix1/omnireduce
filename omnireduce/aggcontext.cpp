@@ -9,7 +9,7 @@ namespace omnireduce {
         int rc = 0;
         struct ibv_sge list;
         list.addr = (uint64_t)srcs_[workerId];
-        list.length = 2*sizeof(uint32_t);
+        list.length = 3*sizeof(uint32_t);
         list.lkey = mrs_[workerId]->lkey;
         struct ibv_recv_wr wr;
         memset(&wr, 0, sizeof(wr));
@@ -92,9 +92,11 @@ namespace omnireduce {
         uint32_t num_workers = omnireduce_par.getNumWorkers();
         uint32_t num_server_threads = omnireduce_par.getNumWorkerThreads();
         uint32_t num_slots_per_thread = omnireduce_par.getNumSlotsPerTh();
+        uint32_t message_size = omnireduce_par.getMessageSize();
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
+        uint32_t adaptive_blocksize = omnireduce_par.getAdaptiveBlockSize();
         struct ibv_wc wc[MAX_CONCURRENT_WRITES * 2];
-        if (direct_memory)
+        if (direct_memory || adaptive_blocksize==1)
         {
             for (uint32_t i=0; i<num_workers; i++)
             {
@@ -103,7 +105,7 @@ namespace omnireduce {
         }
         while (!force_quit)
         {
-            if (direct_memory)
+            if (direct_memory==1 || adaptive_blocksize==1)
             {
                 ne = ibv_poll_cq(cq_address, MAX_CONCURRENT_WRITES * 2, (struct ibv_wc*)wc);
                 if (ne>0)
@@ -135,7 +137,14 @@ namespace omnireduce {
                                                 std::cerr<<"Data type error"<<std::endl;
                                                 exit(1);
                                         }
-                                        //std::cout<<tensor_size<<" "<<typecode<<std::endl;
+                                        omnireduce_par.setBlockSize(srcs_[w][2]);
+                                        if (direct_memory==1)
+                                            omnireduce_par.setMessageSize(srcs_[w][2]);
+                                        block_size = omnireduce_par.getBlockSize();
+                                        message_size = omnireduce_par.getMessageSize();
+                                        uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh()*(message_size/block_size);
+                                        omnireduce_par.setInfOffset(num_blocks_per_thread);
+                                        //std::cout<<tensor_size<<" "<<typecode<<" "<<block_size<<std::endl;
                                     }
                                     count = tensor_size;
                                     uint32_t block_count = 0;
@@ -174,6 +183,9 @@ namespace omnireduce {
                                         post_send_ready(w);
                                 }
                             }
+                        }
+                        else {
+                            std::cout<<"error "<<wc[i].status<<std::endl;
                         }
                     }
                 }
@@ -311,9 +323,9 @@ namespace omnireduce {
         mrs_ = (struct ibv_mr **)malloc(sizeof(struct ibv_mr*)*num_workers);
         for (uint32_t i=0; i<num_workers; i++)
         {
-            srcs_[i] = (uint32_t *)malloc(2*sizeof(uint32_t));
-            memset(srcs_[i], 0, 2*sizeof(uint32_t));
-            mrs_[i] = ibv_reg_mr(pd, srcs_[i], 2*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
+            srcs_[i] = (uint32_t *)malloc(3*sizeof(uint32_t));
+            memset(srcs_[i], 0, 3*sizeof(uint32_t));
+            mrs_[i] = ibv_reg_mr(pd, srcs_[i], 3*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
             if (!mrs_[i]) {
                 std::cerr<<"ibv_reg_mr failed with mr_flags="<<mr_flags<<std::endl;
                 exit(1);

@@ -291,13 +291,13 @@ namespace omnireduce {
         events = (cudaEvent_t *)malloc(1024*sizeof(cudaEvent_t));
         chunk_finished = (bool *)malloc(1024*sizeof(bool));
         chunk_completed = (uint32_t *)malloc(1024*sizeof(uint32_t));
-        uint32_t *previous_chunk = (uint32_t *)malloc(sizeof(uint32_t)*num_blocks_per_thread);
-        memset(previous_chunk, 0, sizeof(uint32_t)*num_blocks_per_thread);
+        uint32_t *previous_chunk = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread*message_size);
+        memset(previous_chunk, 0, sizeof(uint32_t)*num_slots_per_thread*message_size);
         b_events = (cudaEvent_t *)malloc(1024*sizeof(cudaEvent_t));
         b_chunk_finished = (bool *)malloc(1024*sizeof(bool));
 #endif
-        uint32_t *current_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_blocks_per_thread);
-        memset(current_offset, 0, sizeof(uint32_t)*num_blocks_per_thread);
+        uint32_t *current_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread*message_size);
+        memset(current_offset, 0, sizeof(uint32_t)*num_slots_per_thread*message_size);
         uint32_t *current_offsets = (uint32_t *)malloc(sizeof(uint32_t)*message_size);
         memset(current_offsets, 0, sizeof(uint32_t)*message_size);
         uint32_t *next_offsets = (uint32_t *)malloc(sizeof(uint32_t)*message_size);
@@ -317,6 +317,8 @@ namespace omnireduce {
         {
             if (dctx_ptr->receive_tensor(tu, thread_id)) 
             {
+                block_size = omnireduce_par.getBlockSize();
+                num_blocks_per_thread = num_slots_per_thread*(message_size/block_size);
                 memset(buff_index, 0, sizeof(uint32_t)*num_slots_per_thread);
                 memset(finished_blocks, 0, sizeof(uint32_t)*num_slots_per_thread);
                 finished_slots = 0;
@@ -725,6 +727,7 @@ namespace omnireduce {
         {
             if (dctx_ptr->receive_tensor(tu, thread_id))
             {
+                block_size = omnireduce_par.getBlockSize();
                 finished_slots = 0;
                 
                 switch (tu.type)

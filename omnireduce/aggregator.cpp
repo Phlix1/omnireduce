@@ -98,11 +98,11 @@ namespace omnireduce {
         num_comm_buff = omnireduce_par.getNumCommbuff();
         element_size = 4;
 
-        uint32_t *current_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_blocks_per_thread);
-        memset(current_offset, 0, sizeof(uint32_t)*num_blocks_per_thread);
+        uint32_t *current_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread*message_size);
+        memset(current_offset, 0, sizeof(uint32_t)*num_slots_per_thread*message_size);
         
-        uint32_t **block_next_offset = (uint32_t **)malloc(sizeof(uint32_t *)*num_blocks_per_thread);
-        for (uint32_t i=0; i<num_blocks_per_thread; i++){
+        uint32_t **block_next_offset = (uint32_t **)malloc(sizeof(uint32_t *)*num_slots_per_thread*message_size);
+        for (uint32_t i=0; i<num_slots_per_thread*message_size; i++){
             block_next_offset[i] = (uint32_t *)malloc(sizeof(uint32_t)*num_workers);
             memset(block_next_offset[i], 0, sizeof(uint32_t)*num_workers);
         }
@@ -124,8 +124,8 @@ namespace omnireduce {
             memset(current_offsets[i], 0, sizeof(uint32_t)*message_size);
             memset(next_offsets[i], 0, sizeof(uint32_t)*message_size);
         }
-        uint32_t *min_next_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_blocks_per_thread);
-        memset(min_next_offset, 0, sizeof(uint32_t)*num_blocks_per_thread);
+        uint32_t *min_next_offset = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread*message_size);
+        memset(min_next_offset, 0, sizeof(uint32_t)*num_slots_per_thread*message_size);
         uint32_t *register_count = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
         memset(register_count, 0, sizeof(uint32_t)*num_slots_per_thread);
         uint32_t *set = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
@@ -147,6 +147,8 @@ namespace omnireduce {
                     {
                         if (wc[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM)
                         {
+                            block_size = omnireduce_par.getBlockSize();
+                            num_blocks_per_thread = num_slots_per_thread*(message_size/block_size);
                             typecode = (wc[i].imm_data & 0xF0000000) >> 28;
                             switch (typecode)
                             {
@@ -402,6 +404,7 @@ namespace omnireduce {
                     {
                         if (wc[i].opcode == IBV_WC_RECV_RDMA_WITH_IMM)
                         {
+                            block_size = omnireduce_par.getBlockSize();
                             element_size = dctx_ptr->element_size;
                             next_offset = wc[i].imm_data;
                             slot = (next_offset/block_size)%num_slots_per_thread;
