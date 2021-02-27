@@ -34,6 +34,7 @@ namespace omnireduce {
             uint32_t num_aggregators;
             uint32_t num_qps_per_aggregator_per_thread;
             uint32_t num_slots_per_thread;
+            uint32_t buffer_size;
             uint32_t chunk_size;
             uint32_t bitmap_chunk_size;
             uint32_t message_size;
@@ -44,6 +45,8 @@ namespace omnireduce {
             uint32_t direct_memory;
             uint32_t adaptive_blocksize;
             uint32_t gpu_devId;
+            float threshold;
+            char *ib_hca;
             int ib_port;
             int gid_idx;
             int sl;
@@ -82,6 +85,9 @@ namespace omnireduce {
             }
             void setNumAggregators(uint32_t an) {
                 num_aggregators = an;
+            }
+            void setBufferSize(uint32_t bs) {
+                buffer_size = bs;
             }
             void setChunkSize(uint32_t cs) {
                 chunk_size = cs;
@@ -162,6 +168,13 @@ namespace omnireduce {
             void setGpuDeviceId(uint32_t devId) {
                 gpu_devId = devId;
             }
+            void setIbHca(std::string en) {
+                ib_hca = (char*)malloc(20*sizeof(char));
+                strcpy(ib_hca, en.c_str());
+            }
+            void setThreshold(float th) {
+                threshold = th;
+            }
             uint32_t getBuffUnitSize() {
                 return buff_unit_size;
             }
@@ -179,6 +192,9 @@ namespace omnireduce {
             }
             uint32_t getNumSlotsPerTh() {
                 return num_slots_per_thread;
+            }
+            uint32_t getBufferSize() {
+                return buffer_size;
             }
             uint32_t getChunkSize() {
                 return chunk_size;
@@ -230,6 +246,12 @@ namespace omnireduce {
             }
             uint32_t getGpuDeviceId() {
                 return gpu_devId;
+            }
+            char *getIbHca() {
+                return ib_hca;
+            }
+            float getThreshold() {
+                return threshold;
             }
     };
 

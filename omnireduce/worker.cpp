@@ -366,12 +366,12 @@ namespace omnireduce {
                                 compute_bitmap((int32_t*)tu.ptr+start_offset+b_chunk_size*i/element_size,
                                                 d_bitmap+b_chunk_size*i/element_size/block_size,
                                                 b_chunk_size/element_size,
-                                                block_size, b_stream);
+                                                block_size, b_stream, 0);
                             case FLOAT32:                    
                                 compute_bitmap((float*)tu.ptr+start_offset+b_chunk_size*i/element_size,
                                                 d_bitmap+b_chunk_size*i/element_size/block_size,
                                                 b_chunk_size/element_size,
-                                                block_size, b_stream);
+                                                block_size, b_stream, 0.0);
                             default:
                                 std::cerr<<"Data type error"<<std::endl;
                                 exit(1);
@@ -389,13 +389,13 @@ namespace omnireduce {
                             compute_bitmap((int32_t*)tu.ptr+start_offset+b_chunk_size*(b_chunk_num-1)/element_size,
                                             d_bitmap+b_chunk_size*(b_chunk_num-1)/element_size/block_size,
                                             tensor_size-(b_chunk_num-1)*b_chunk_size/element_size,
-                                            block_size, b_stream);
+                                            block_size, b_stream, 0);
                             break;                    
                         case FLOAT32:
                             compute_bitmap((float*)tu.ptr+start_offset+b_chunk_size*(b_chunk_num-1)/element_size,
                                             d_bitmap+b_chunk_size*(b_chunk_num-1)/element_size/block_size,
                                             tensor_size-(b_chunk_num-1)*b_chunk_size/element_size,
-                                            block_size, b_stream);
+                                            block_size, b_stream, 0.0);
                             break;
                         default:
                             std::cerr<<"Data type error"<<std::endl;

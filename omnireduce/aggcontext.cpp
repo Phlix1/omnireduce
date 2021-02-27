@@ -74,14 +74,23 @@ namespace omnireduce {
     }
 
     void AggContext::StartMaster() {
-        pthread_attr_t attr;
-        cpu_set_t cpus;
-        pthread_attr_init(&attr);
-        CPU_ZERO(&cpus);
-        CPU_SET(omnireduce_par.getAggregatorCoreId(0), &cpus);
-        pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-        if (pthread_create(&aggmasterThread, &attr, OmniAggregatorMaster, this)) {
-        //if (pthread_create(&aggmasterThread, NULL, OmniAggregatorMaster, this)) {
+        int ret = 0;
+        int coreid = omnireduce_par.getAggregatorCoreId(0);
+        if (coreid<0)
+        {
+            ret = pthread_create(&aggmasterThread, NULL, OmniAggregatorMaster, this);
+        }
+        else
+        {
+            pthread_attr_t attr;
+            cpu_set_t cpus;
+            pthread_attr_init(&attr);
+            CPU_ZERO(&cpus);
+            CPU_SET(coreid, &cpus);
+            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+            ret = pthread_create(&aggmasterThread, &attr, OmniAggregatorMaster, this);
+        }
+        if (ret) {
             std::cerr<<"Error starting aggregator master thread"<<std::endl;
             exit(1);
         }
@@ -212,7 +221,7 @@ namespace omnireduce {
         parse_parameters();
         int cycle_buffer = sysconf(_SC_PAGESIZE);
         int num_devices;
-        char *dev_name = NULL;
+        char *dev_name = (char*)malloc(20*sizeof(char));;
         struct ibv_device **dev_list = NULL;
         struct ibv_qp_init_attr *qp_init_attr = NULL;
         struct ibv_qp_init_attr qp_address_attr;
@@ -245,6 +254,7 @@ namespace omnireduce {
 	    	exit(1);
 	    }
         /* search for the specific device we want to work with */
+        strcpy(dev_name, omnireduce_par.getIbHca());
 	    for (int i = 0; i < num_devices; i++)
 	    {
 	    	if (!dev_name)
@@ -254,6 +264,7 @@ namespace omnireduce {
 	    	}
 	    	if (!strcmp(ibv_get_device_name(dev_list[i]), dev_name))
 	    	{
+                std::cout<<"IB device: "<<dev_name<<std::endl;
 	    		ib_dev = dev_list[i];
 	    		break;
 	    	}

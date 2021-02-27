@@ -292,23 +292,39 @@ namespace omnireduce {
         pthread_attr_init(&attr);
         for (uint32_t i=0; i<num_slave_threads; i++) 
         {
-            CPU_ZERO(&cpus);
-            CPU_SET(omnireduce_par.getWorkerCoreId(1+i), &cpus);
-            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+            int coreid = omnireduce_par.getWorkerCoreId(i+1);
             if (direct_memory)
             {
-                ret = pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr);
+                if (coreid<0)
+                {
+                    ret = pthread_create(&(slaveThreads[i]), NULL, dr_worker, dctx_ptr);
+                }
+                else
+                {
+                    CPU_ZERO(&cpus);
+                    CPU_SET(coreid, &cpus);
+                    pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+                    ret = pthread_create(&(slaveThreads[i]), &attr, dr_worker, dctx_ptr);
+                }
                 if (ret) {
-                //if (pthread_create(&(slaveThreads[i]), NULL, dr_worker, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread "<<ret<<std::endl;
                     exit(1);
                 }
             }
             else
             {
-                ret = pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr);
+                if (coreid<0)
+                {
+                    ret = pthread_create(&(slaveThreads[i]), NULL, worker, dctx_ptr);
+                }
+                else
+                {
+                    CPU_ZERO(&cpus);
+                    CPU_SET(coreid, &cpus);
+                    pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+                    ret = pthread_create(&(slaveThreads[i]), &attr, worker, dctx_ptr);
+                }
                 if (ret) {
-                //if (pthread_create(&(slaveThreads[i]), NULL, worker, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
@@ -522,23 +538,39 @@ namespace omnireduce {
         pthread_attr_init(&attr);
         for (uint32_t i=0; i<num_slave_threads; i++) 
         {
-            CPU_ZERO(&cpus);
-            CPU_SET(omnireduce_par.getAggregatorCoreId(i+1), &cpus);
-            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+            int coreid = omnireduce_par.getAggregatorCoreId(i+1);
             if (direct_memory)
             {
-                ret = pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr);
+                if (coreid<0)
+                {
+                    ret = pthread_create(&(slaveThreads[i]), NULL, dr_aggregator, dctx_ptr);
+                }
+                else
+                {
+                    CPU_ZERO(&cpus);
+                    CPU_SET(coreid, &cpus);
+                    pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+                    ret = pthread_create(&(slaveThreads[i]), &attr, dr_aggregator, dctx_ptr);
+                }
                 if (ret) {
-                //if (pthread_create(&(slaveThreads[i]), NULL, dr_aggregator, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);
                 }
             }
             else
             {
-                ret = pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr);
+                if (coreid<0)
+                {
+                    ret = pthread_create(&(slaveThreads[i]), NULL, aggregator, dctx_ptr);
+                }
+                else
+                {
+                    CPU_ZERO(&cpus);
+                    CPU_SET(coreid, &cpus);
+                    pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+                    ret = pthread_create(&(slaveThreads[i]), &attr, aggregator, dctx_ptr);
+                }
                 if (ret) {
-                //if (pthread_create(&(slaveThreads[i]), NULL, aggregator, dctx_ptr)) {
                     std::cerr<<"Error starting slave thread"<<std::endl;
                     exit(1);                    
                 }
