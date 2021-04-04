@@ -14,7 +14,7 @@ namespace omnireduce {
     }
 
     OmniContext::OmniContext() :
-            num_worker_threads (1), master_ready(0), data_ready(0), results(0), tensor_update_ptr(NULL), result_id(0), one_msec(1) {
+            num_worker_threads (1), master_ready(0), data_ready(0), results(0), tensor_update_ptr(NULL), result_id(0), one_msec(1), one_microsec(1) {
         
         tid_counter.store(0);
         threadid.store(0);
@@ -64,7 +64,8 @@ namespace omnireduce {
         boost::unique_lock<boost::mutex> lock(data_ready_mutex);
 
         while (data_ready!=(uint32_t)(thread_id+1)) {
-            if (data_push_event.wait_for(lock, one_msec) == boost::cv_status::timeout)
+            //return false;
+            if (data_push_event.wait_for(lock, one_microsec) == boost::cv_status::timeout)
                 return false;
         }
 
@@ -95,7 +96,8 @@ namespace omnireduce {
         boost::unique_lock<boost::mutex> lock(result_mutex);
 
         while (results == num_worker_threads) {
-            if (result_pop_event.wait_for(lock, one_msec) == boost::cv_status::timeout)
+            //return false;
+            if (result_pop_event.wait_for(lock, one_microsec) == boost::cv_status::timeout)
                 return false;
         }
 
@@ -373,6 +375,8 @@ namespace omnireduce {
         float threshold = omnireduce_par.getThreshold();
         if (count%block_size!=0)
             block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
         if (bitmap_async==false)
         {
             compute_bitmap(ptr, d_bitmap, count, block_size, stream, threshold);
@@ -395,7 +399,8 @@ namespace omnireduce {
         tu.async = async;
         tu.bitmap_async = bitmap_async;
         send_tensor(&tu);
-        receive_result(tensor_id);     
+        receive_result(tensor_id);
+        cudaFree(d_bitmap);  
     }
     void OmniContext::AllReduce_NGDR(int32_t *ptr, int count, cudaStream_t stream, int devId, bool async, bool bitmap_async)
     {
@@ -405,6 +410,8 @@ namespace omnireduce {
         int threshold=0;
         if (count%block_size!=0)
             block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
         if (bitmap_async==false)
         {
             compute_bitmap(ptr, d_bitmap, count, block_size, stream, threshold);
@@ -427,6 +434,7 @@ namespace omnireduce {
         tu.bitmap_async = bitmap_async;
         send_tensor(&tu);
         receive_result(tensor_id);
+        cudaFree(d_bitmap);
     }
 
     void OmniContext::AllReduce_GDR(float *ptr, int count, cudaStream_t stream, int devId)
@@ -437,6 +445,8 @@ namespace omnireduce {
         float threshold = omnireduce_par.getThreshold();
         if (count%block_size!=0)
             block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
         compute_bitmap(ptr, d_bitmap, count, block_size, stream, threshold);
         cudaStreamSynchronize(stream);
         cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
@@ -468,6 +478,7 @@ namespace omnireduce {
         send_tensor(&tu);       
         //receive result
         receive_result(tensor_id);
+        cudaFree(d_bitmap);
     }
 
     void OmniContext::AllReduce_GDR(int32_t *ptr, int count, cudaStream_t stream, int devId)
@@ -478,6 +489,8 @@ namespace omnireduce {
         int threshold = 0;
         if (count%block_size!=0)
             block_count += 1;
+        uint8_t *d_bitmap;
+        cudaMalloc((void **)&d_bitmap, block_count);
         compute_bitmap(ptr, d_bitmap, count, block_size, stream, threshold);
         cudaStreamSynchronize(stream);
         cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
@@ -509,6 +522,7 @@ namespace omnireduce {
         send_tensor(&tu);       
         //receive result
         receive_result(tensor_id);
+        cudaFree(d_bitmap);
     }
 
     void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream, int devId)
@@ -702,7 +716,6 @@ namespace omnireduce {
             cudaSetDevice(gpu_devId);
             ret = cudaMalloc((void **)&cuda_comm_buf, comm_buf_size);
             ret = cudaMallocHost((void **)&bitmap, comm_buf_size/buff_unit_size);
-            ret = cudaMalloc((void **)&d_bitmap, comm_buf_size/buff_unit_size);
             if (ret!=0)
             {
                 std::cerr<<"failed to malloc "<<comm_buf_size<<" bytes to communication memory buffer"<<std::endl;
@@ -741,7 +754,6 @@ namespace omnireduce {
             ret = cudaMallocHost((void **)&comm_buf, comm_buf_size*buff_unit_size);
             ret = cudaMallocHost((void **)&host_tensor, host_tensor_size);
             ret = cudaMallocHost((void **)&bitmap, host_tensor_size/buff_unit_size);
-            ret = cudaMalloc((void **)&d_bitmap, host_tensor_size/buff_unit_size);
 #else
             ret = posix_memalign(reinterpret_cast<void**>(&comm_buf), cycle_buffer, comm_buf_size*buff_unit_size);
 #endif
