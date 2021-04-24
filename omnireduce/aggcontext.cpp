@@ -9,7 +9,7 @@ namespace omnireduce {
         int rc = 0;
         struct ibv_sge list;
         list.addr = (uint64_t)srcs_[workerId];
-        list.length = 3*sizeof(uint32_t);
+        list.length = 4*sizeof(uint32_t);
         list.lkey = mrs_[workerId]->lkey;
         struct ibv_recv_wr wr;
         memset(&wr, 0, sizeof(wr));
@@ -149,6 +149,7 @@ namespace omnireduce {
                                         omnireduce_par.setBlockSize(srcs_[w][2]);
                                         if (direct_memory==1)
                                             omnireduce_par.setMessageSize(srcs_[w][2]);
+                                        offsets[w] = srcs_[w][3];
                                         block_size = omnireduce_par.getBlockSize();
                                         message_size = omnireduce_par.getMessageSize();
                                         uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh()*(message_size/block_size);
@@ -241,6 +242,7 @@ namespace omnireduce {
         num_server_threads = omnireduce_par.getNumWorkerThreads();
         size_t comm_buf_size = 0;
         remote_props_array = (struct remote_con_data_t *)malloc(num_workers*sizeof(struct remote_con_data_t));
+        offsets = (uint32_t *)malloc(num_workers*sizeof(uint32_t));
         //step 2 - create resources
         /* get device names in the system */
         dev_list = ibv_get_device_list(&num_devices);
@@ -334,9 +336,9 @@ namespace omnireduce {
         mrs_ = (struct ibv_mr **)malloc(sizeof(struct ibv_mr*)*num_workers);
         for (uint32_t i=0; i<num_workers; i++)
         {
-            srcs_[i] = (uint32_t *)malloc(3*sizeof(uint32_t));
-            memset(srcs_[i], 0, 3*sizeof(uint32_t));
-            mrs_[i] = ibv_reg_mr(pd, srcs_[i], 3*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
+            srcs_[i] = (uint32_t *)malloc(4*sizeof(uint32_t));
+            memset(srcs_[i], 0, 4*sizeof(uint32_t));
+            mrs_[i] = ibv_reg_mr(pd, srcs_[i], 4*sizeof(uint32_t), IBV_ACCESS_LOCAL_WRITE);
             if (!mrs_[i]) {
                 std::cerr<<"ibv_reg_mr failed with mr_flags="<<mr_flags<<std::endl;
                 exit(1);

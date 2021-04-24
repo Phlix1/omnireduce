@@ -30,6 +30,7 @@ namespace omnireduce {
             struct ibv_mr **mrs_;
             uint32_t **current_offset_thread;
             struct remote_con_data_t *remote_props_array;
+            uint32_t *offsets;
             std::atomic_uint_fast32_t threadid;
             AggContext();
             ~AggContext();

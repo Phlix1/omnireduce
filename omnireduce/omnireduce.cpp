@@ -181,11 +181,7 @@ namespace omnireduce {
             local_con_datas[i].num_peers = num_aggregators;
             if (direct_memory)
             {
-#ifdef USE_CUDA
-                local_con_datas[i].addr = htonll((uintptr_t)(dctx_ptr->cuda_comm_buf));
-#else
                 local_con_datas[i].addr = htonll((uintptr_t)(dctx_ptr->comm_buf));
-#endif
             }
             else
             {

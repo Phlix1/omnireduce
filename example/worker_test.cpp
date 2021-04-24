@@ -10,19 +10,29 @@ int main(int argc, char *argv[]) {
     int myrank=0, worldsize=1;
     MPI_Comm_size(MPI_COMM_WORLD, &worldsize);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
-    omnireduce::OmniContext& omniContext = omnireduce::OmniContext::getInstance();
+    int cycle_buffer = sysconf(_SC_PAGESIZE);
+    DATA_TYPE *buf;
+    size_t buf_size=1024;
+    int ret = posix_memalign(reinterpret_cast<void**>(&buf), cycle_buffer, buf_size*1024*1024);
+    if (ret!=0)
+    {
+        std::cerr<<"failed to malloc "<<buf_size<<" bytes to communication memory buffer"<<std::endl;
+        exit(1);
+    }
+    memset(buf, 0, buf_size);    
+    omnireduce::OmniContext& omniContext = omnireduce::OmniContext::getInstance((void *)buf, buf_size);
     srand(omniContext.workerId+1);
     uint32_t block_size = omnireduce::omnireduce_par.getBlockSize();
-    uint32_t tensor_size = 67108864;
+    uint32_t tensor_size = 26214400;
     uint32_t block_count = tensor_size/block_size;
     if (tensor_size%block_size!=0)
         block_count += 1;
     DATA_TYPE *input = (DATA_TYPE *)malloc(tensor_size*sizeof(DATA_TYPE));
     DATA_TYPE *output = (DATA_TYPE *)malloc(tensor_size*sizeof(DATA_TYPE));
-    DATA_TYPE *data = (DATA_TYPE *)malloc(tensor_size*sizeof(DATA_TYPE));
+    DATA_TYPE *data = buf+4;
     memset(input, 0, tensor_size*sizeof(int));
     uint8_t *bitmap = (uint8_t *)malloc(block_count*sizeof(uint8_t));
-    double density_ratio = 0.01;
+    double density_ratio = 0.1;
     double rnum = 0;
     for(uint32_t i=0; i<block_count; i++)
     {
@@ -65,7 +75,8 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         gettimeofday(&cur_time, NULL);
         start_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec);
-        omniContext.AllReduce(data, tensor_size, bitmap, block_count);
+        //omniContext.AllReduce(data, tensor_size, bitmap, block_count);
+        omniContext.AllReduce(data, tensor_size);
         gettimeofday(&cur_time, NULL);
         diff_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec) - start_time_usec;
         if(myrank==0)

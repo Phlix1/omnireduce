@@ -7,17 +7,13 @@
 
 #include "omnireduce/common.hpp"
 
-#ifdef USE_CUDA
-#include <cuda_runtime.h>
-#endif
-
 namespace omnireduce {
     void *OmniMaster(void *ctx);
   
     class OmniContext {
         public:
-            static OmniContext& getInstance() {
-                static OmniContext instance;
+            static OmniContext& getInstance(void *CommBuf, size_t BufSize) {
+                static OmniContext instance(CommBuf, BufSize);
                 return instance;
             }
          
@@ -37,27 +33,17 @@ namespace omnireduce {
             void init();
             void StartMaster();
             void StopMaster();
-            void send_address(int, TensorUpdateType);
+            void send_address(int, TensorUpdateType, uint32_t);
 
             void AllReduce(float*, int, uint8_t*, int);
             void AllReduce(int32_t*, int, uint8_t*, int);
-#ifdef USE_CUDA
-            void AllReduce(float*, int, uint8_t*, int, cudaStream_t, int);
-            void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int);
-            void AllReduce(float*, int, uint8_t*, int, cudaStream_t, int, bool);
-            void AllReduce(int32_t*, int, uint8_t*, int, cudaStream_t, int, bool);
-            void AllReduce_NGDR(float*, int, cudaStream_t, int, bool, bool);
-            void AllReduce_NGDR(int32_t*, int, cudaStream_t, int, bool, bool);
-            void AllReduce_GDR(float*, int, cudaStream_t, int);
-            void AllReduce_GDR(int32_t*, int, cudaStream_t, int);
-            void AllReduce(float*, int, cudaStream_t, int);
-            void AllReduce(int32_t*, int, cudaStream_t, int);
-            void *host_tensor;
-            uint8_t *bitmap;
-#endif
+            void AllReduce(float*, int);
+            void AllReduce(int32_t*, int);
             int workerId;
             int *socks;
             void *comm_buf;
+            void *total_comm_buff;
+            size_t buf_size;
             void *cuda_comm_buf;
             struct ibv_context *ib_ctx;
             struct ibv_port_attr port_attr;
@@ -74,7 +60,7 @@ namespace omnireduce {
             int ret;
         
         private:
-            OmniContext();
+            OmniContext(void *CommBuf, size_t BufSize);
             virtual ~OmniContext();
 
             pthread_t masterThread;

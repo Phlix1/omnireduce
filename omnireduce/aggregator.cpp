@@ -345,7 +345,7 @@ namespace omnireduce {
         sr.num_sge = 1;
         sr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
         sr.send_flags = IBV_SEND_SIGNALED;
-        sr.wr.rdma.remote_addr =  dctx_ptr->remote_props_array[mid].addr + current_offset*element_size;
+        sr.wr.rdma.remote_addr =  dctx_ptr->remote_props_array[mid].addr + current_offset*element_size + dctx_ptr->offsets[mid];
         sr.wr.rdma.rkey = dctx_ptr->remote_props_array[mid].rkey;
         sr.imm_data = next_offset;
         rc = ibv_post_send(dctx_ptr->qp[qid], &sr, &bad_wr);
