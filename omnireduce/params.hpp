@@ -54,9 +54,13 @@ namespace omnireduce {
             char **worker_ipaddr;
             int *worker_cores;
             int *aggregator_cores;
+            int ndevs;
         public:
             omnireduce_params();
             ~omnireduce_params();
+            void setNdevs (int n) {
+                ndevs = n;
+            }
             void setIbPort(int p) {
                 ib_port=p;
             }
@@ -234,6 +238,9 @@ namespace omnireduce {
             }
             int getAggregatorCoreId(uint32_t i) {
                 return aggregator_cores[i];
+            }
+            int getNdevs() {
+                return ndevs;
             }
             int getIbPort() {
                 return ib_port;

@@ -13,7 +13,7 @@ namespace omnireduce {
         std::string config_file;
         std::ifstream ifs;
         uint32_t num_workers, num_aggregators, num_threads, buffer_size, chunk_size, bitmap_chunk_size, message_size, block_size, direct_memory, adaptive_blocksize, gpu_devId;
-        int ib_port, gid_idx, sl;
+        int ib_port, gid_idx, sl, ndevs;
         float threshold;
         std::string worker_ip_str, aggregator_ips_str, worker_cores, aggregator_cores, ib_hca;
         po::options_description omnireduce_options("OmniReduce options");
@@ -38,7 +38,8 @@ namespace omnireduce {
             ("omnireduce.worker_ips", po::value<std::string>(&worker_ip_str)->default_value("10.0.0.1"), "Ip addresses of workers")
             ("omnireduce.aggregator_ips", po::value<std::string>(&aggregator_ips_str)->default_value("10.0.0.1"), "Ip addresses of aggregators")
             ("omnireduce.threshold", po::value<float>(&threshold)->default_value(0.0), "Threshold for bitmap calculation")
-            ("omnireduce.ib_hca", po::value<std::string>(&ib_hca)->default_value("mlx5_0"), "eth name");
+            ("omnireduce.ib_hca", po::value<std::string>(&ib_hca)->default_value("mlx5_0"), "eth name")
+            ("omnireduce.ndevs", po::value<int>(&ndevs)->default_value(1), "GPU number per node");
         config_file_options.add(omnireduce_options);
         config_file = "/etc/omnireduce.cfg";
         ifs.open(config_file.c_str());
@@ -91,6 +92,7 @@ namespace omnireduce {
         omnireduce_par.setGpuDeviceId(gpu_devId);
         omnireduce_par.setIbHca(ib_hca);
         omnireduce_par.setThreshold(threshold);
+        omnireduce_par.setNdevs(ndevs);
     }
     omnireduce_params::omnireduce_params() {
         buff_unit_size = 4;

@@ -13,6 +13,7 @@ CXXFLAGS  := -O3 -std=c++11
 ifeq ($(USE_CUDA),ON)
 $(info "USE_CUDA ON")
 CXXFLAGS += -DUSE_CUDA --compiler-options -fPIC 
+LDLIBS += -lnccl
 CC  := nvcc
 LD  := nvcc
 else

@@ -9,6 +9,24 @@
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
+#include "nccl.h"
+#define CUDACHECK(cmd) do {                         \
+  cudaError_t e = cmd;                              \
+  if( e != cudaSuccess ) {                          \
+    printf("Failed: Cuda error %s:%d '%s'\n",             \
+        __FILE__,__LINE__,cudaGetErrorString(e));   \
+    exit(EXIT_FAILURE);                             \
+  }                                                 \
+} while(0)
+
+#define NCCLCHECK(cmd) do {                         \
+  ncclResult_t r = cmd;                             \
+  if (r!= ncclSuccess) {                            \
+    printf("Failed, NCCL error %s:%d '%s'\n",             \
+        __FILE__,__LINE__,ncclGetErrorString(r));   \
+    exit(EXIT_FAILURE);                             \
+  }                                                 \
+} while(0)
 #endif
 
 namespace omnireduce {
@@ -52,8 +70,13 @@ namespace omnireduce {
             void AllReduce_GDR(int32_t*, int, cudaStream_t, int);
             void AllReduce(float*, int, cudaStream_t, int);
             void AllReduce(int32_t*, int, cudaStream_t, int);
+            void AllReduce(float*, int, cudaStream_t);
+            void AllReduce(int32_t*, int, cudaStream_t);
             void *host_tensor;
             uint8_t *bitmap;
+            int localrank;
+            ncclUniqueId id;
+            ncclComm_t comm;
 #endif
             int workerId;
             int *socks;

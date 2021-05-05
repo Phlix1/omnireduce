@@ -5,6 +5,15 @@
 #endif
 
 namespace omnireduce {
+    static void getHostName(char* hostname, int maxlen) {
+      gethostname(hostname, maxlen);
+      for (int i=0; i< maxlen; i++) {
+        if (hostname[i] == '.') {
+            hostname[i] = '\0';
+            return;
+        }
+      }
+    }
     void *OmniMaster(void *ctx) {
         OmniContext* d_ctx_ptr = (OmniContext *) ctx;
 
@@ -18,12 +27,60 @@ namespace omnireduce {
         
         tid_counter.store(0);
         threadid.store(0);
+        parse_parameters();
+#ifdef USE_CUDA
+        int ndevs = omnireduce_par.getNdevs();
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        if (ndevs>1) {
+            char *local_rank_string;
+            local_rank_string = getenv("LOCAL_RANK");
+            if(!local_rank_string) {
+                std::cerr<<"LOCAL_RANK not set."<<ret<<std::endl;
+                exit(1);
+            }
+            FILE *fp=NULL;
+            localrank = atoi(local_rank_string);
+            char hostname[1024];
+            getHostName(hostname, 1024);
+            std::cout<<hostname<<" Local rank: "<<localrank<<std::endl;
+            if (localrank==gpu_devId) {
+                ncclGetUniqueId(&id);
+                fp = fopen(hostname,"w+");
+                fwrite(&id, sizeof(id), 1, fp);
+                fclose(fp);
+                CUDACHECK(cudaSetDevice(localrank));
+                NCCLCHECK(ncclCommInitRank(&comm, ndevs, id, localrank));
+                remove(hostname);
+                init();
+                StartMaster();
+            }
+            else {
+                while((access(hostname,F_OK))==-1);
+                fp = fopen(hostname, "r");
+                fread(&id, sizeof(id), 1, fp);
+                fclose(fp);
+                CUDACHECK(cudaSetDevice(localrank));
+                NCCLCHECK(ncclCommInitRank(&comm, ndevs, id, localrank));
+            }
+        }
+        else {
+            init();
+            StartMaster();
+        }
+#else
         init();
         StartMaster();
+#endif
     }
     OmniContext::~OmniContext() {
-
+#ifdef USE_CUDA        
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        if (localrank==gpu_devId) {
+            StopMaster();
+        }
+#else
         StopMaster();
+#endif
     }
 
     void OmniContext::set_num_worker_threads(uint32_t nt) {
@@ -64,8 +121,8 @@ namespace omnireduce {
         boost::unique_lock<boost::mutex> lock(data_ready_mutex);
 
         while (data_ready!=(uint32_t)(thread_id+1)) {
-            //return false;
-            if (data_push_event.wait_for(lock, one_microsec) == boost::cv_status::timeout)
+            return false;
+            if (data_push_event.wait_for(lock, one_msec) == boost::cv_status::timeout)
                 return false;
         }
 
@@ -96,8 +153,8 @@ namespace omnireduce {
         boost::unique_lock<boost::mutex> lock(result_mutex);
 
         while (results == num_worker_threads) {
-            //return false;
-            if (result_pop_event.wait_for(lock, one_microsec) == boost::cv_status::timeout)
+            return false;
+            if (result_pop_event.wait_for(lock, one_msec) == boost::cv_status::timeout)
                 return false;
         }
 
@@ -604,13 +661,111 @@ namespace omnireduce {
             AllReduce_NGDR(ptr, count, stream, devId, true, false);
         }     
     }
+
+    void OmniContext::AllReduce(float *ptr, int count, cudaStream_t stream)
+    {
+        int devId = localrank;
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        int ndevs = omnireduce_par.getNdevs();
+        if (ndevs>1)
+            NCCLCHECK(ncclReduce((const void*)ptr, (void*)ptr, count, ncclFloat, ncclSum, gpu_devId, comm, stream));
+        if (devId==gpu_devId)
+        {
+            if (gpu_devId!=devId)
+            {
+                std::cerr<<"Use GPU:"<<devId<<" but set GPU:"<<gpu_devId<<std::endl;
+                exit(1);
+            }
+            uint32_t direct_memory = omnireduce_par.getDirectMemory();
+            uint32_t adaptive_blocksize = omnireduce_par.getAdaptiveBlockSize();
+            cudaSetDevice(devId);
+            if (direct_memory)
+            {
+                if (adaptive_blocksize)
+                {
+                    //set block size here
+                    uint32_t block_size = 256;
+                    omnireduce_par.setBlockSize(block_size);
+                    omnireduce_par.setMessageSize(block_size);
+                    uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh();
+                    omnireduce_par.setInfOffset(num_blocks_per_thread);
+                }
+                AllReduce_GDR(ptr, count, stream, devId);
+            }
+            else
+            {
+                if (adaptive_blocksize)
+                {
+                    //set block size here
+                    uint32_t block_size = 256;
+                    omnireduce_par.setBlockSize(block_size);
+                    uint32_t message_size = omnireduce_par.getMessageSize();
+                    uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh()*(message_size/block_size);
+                    omnireduce_par.setInfOffset(num_blocks_per_thread);
+                    send_address(count, FLOAT32);
+                }
+                AllReduce_NGDR(ptr, count, stream, devId, true, false);
+            }
+        }
+        if (ndevs>1)
+            NCCLCHECK(ncclBroadcast((const void*)ptr, (void*)ptr, count, ncclFloat, gpu_devId, comm, stream));
+        CUDACHECK(cudaStreamSynchronize(stream));
+    }
+
+    void OmniContext::AllReduce(int32_t *ptr, int count, cudaStream_t stream)
+    {
+        int devId = localrank;
+        uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        int ndevs = omnireduce_par.getNdevs();
+        if (ndevs>1)
+            NCCLCHECK(ncclReduce((const void*)ptr, (void*)ptr, count, ncclFloat, ncclSum, gpu_devId, comm, stream));
+        if (devId==gpu_devId)
+        {
+            if (gpu_devId!=devId)
+            {
+                std::cerr<<"Use GPU:"<<devId<<" but set GPU:"<<gpu_devId<<std::endl;
+                exit(1);
+            }
+            uint32_t direct_memory = omnireduce_par.getDirectMemory();
+            uint32_t adaptive_blocksize = omnireduce_par.getAdaptiveBlockSize();
+            cudaSetDevice(devId);
+            if (direct_memory)
+            {
+                if (adaptive_blocksize)
+                {
+                    //set block size here
+                    uint32_t block_size = 256;
+                    omnireduce_par.setBlockSize(block_size);
+                    omnireduce_par.setMessageSize(block_size);
+                    uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh();
+                    omnireduce_par.setInfOffset(num_blocks_per_thread);
+                }
+                AllReduce_GDR(ptr, count, stream, devId);
+            }
+            else
+            {
+                if (adaptive_blocksize)
+                {
+                    //set block size here
+                    uint32_t block_size = 256;
+                    omnireduce_par.setBlockSize(block_size);
+                    uint32_t message_size = omnireduce_par.getMessageSize();
+                    uint32_t num_blocks_per_thread = omnireduce_par.getNumSlotsPerTh()*(message_size/block_size);
+                    omnireduce_par.setInfOffset(num_blocks_per_thread);
+                    send_address(count, FLOAT32);
+                }
+                AllReduce_NGDR(ptr, count, stream, devId, true, false);
+            }
+        }
+        if (ndevs>1)
+            NCCLCHECK(ncclBroadcast((const void*)ptr, (void*)ptr, count, ncclFloat, gpu_devId, comm, stream));
+        CUDACHECK(cudaStreamSynchronize(stream));
+    }
 #endif
 
     void OmniContext::init() {
         //step 1 - read and set para
-        parse_parameters();
         int cycle_buffer = sysconf(_SC_PAGESIZE);
-        
         int num_devices;
         char *dev_name = (char*)malloc(20*sizeof(char));
         struct ibv_device **dev_list = NULL;

@@ -7,21 +7,27 @@
 //#define DATA_TYPE int
 
 int main(int argc, char *argv[]) {
-    int devID=0;
+    MPI_Init(&argc, &argv);
+    int myrank=0, worldsize=1;
+    MPI_Comm_size(MPI_COMM_WORLD, &worldsize);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    int nnodes=2;
+    int devID=myrank/nnodes;
+    std::string s = std::to_string(devID);
+    setenv("LOCAL_RANK",s.c_str(),1);
+    std::cout<<devID<<std::endl;
     cudaSetDevice(devID);
     cudaDeviceProp deviceProps;
     cudaGetDeviceProperties(&deviceProps, devID);
     cudaStream_t stream;
     cudaStreamCreate(&stream);
     printf("CUDA device [%s]\n", deviceProps.name);
-    MPI_Init(&argc, &argv);
-    int myrank=0, worldsize=1;
-    MPI_Comm_size(MPI_COMM_WORLD, &worldsize);
-    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+
     omnireduce::OmniContext& omniContext = omnireduce::OmniContext::getInstance();
-    srand(omniContext.workerId+1);
+    srand(myrank+1);
+    //srand(omniContext.workerId+1);
     uint32_t block_size = omnireduce::omnireduce_par.getBlockSize();
-    uint32_t tensor_size = 67108864;
+    uint32_t tensor_size = 26214400;
     uint32_t block_count = tensor_size/block_size;
     if (tensor_size%block_size!=0)
         block_count += 1;
@@ -33,7 +39,7 @@ int main(int argc, char *argv[]) {
     DATA_TYPE *output_dev = (DATA_TYPE *)malloc(tensor_size*sizeof(DATA_TYPE));
     memset(input, 0, tensor_size*sizeof(DATA_TYPE));
     uint8_t *bitmap = (uint8_t *)malloc(block_count*sizeof(uint8_t));
-    double density_ratio = 0.01;
+    double density_ratio = 1.0;
     double rnum = 0;
     for(uint32_t i=0; i<block_count; i++)
     {
@@ -65,7 +71,8 @@ int main(int argc, char *argv[]) {
     unsigned long diff_time_usec;
     while(round<warmups) {
         cudaMemcpy(d_input, input, sizeof(DATA_TYPE)*tensor_size, cudaMemcpyHostToDevice);
-        omniContext.AllReduce(d_input, tensor_size, stream, devID);
+        //omniContext.AllReduce(d_input, tensor_size, stream, devID);
+        omniContext.AllReduce(d_input, tensor_size, stream);
         round++;
     }
     
@@ -77,7 +84,8 @@ int main(int argc, char *argv[]) {
         MPI_Barrier(MPI_COMM_WORLD);
         gettimeofday(&cur_time, NULL);
         start_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec);
-        omniContext.AllReduce(d_input, tensor_size, stream, devID);
+        //omniContext.AllReduce(d_input, tensor_size, stream, devID);
+        omniContext.AllReduce(d_input, tensor_size, stream);
         gettimeofday(&cur_time, NULL);
         diff_time_usec = (cur_time.tv_sec * 1000000) + (cur_time.tv_usec) - start_time_usec;
         if(myrank==0)
