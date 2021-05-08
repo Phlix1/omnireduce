@@ -120,6 +120,8 @@ namespace omnireduce {
         struct addrinfo *resolved_addr = NULL;
         struct addrinfo *iterator;
         int tmp;
+        int max_retry_times = 5;
+        int retry_times = 0;
         char service[6];
         int sockfd = -1;
 	    struct addrinfo hints;
@@ -132,6 +134,7 @@ namespace omnireduce {
             std::cerr<<"failed to set the tcp port"<<std::endl;
             exit(1);
         }
+        sleep(5);
         for (size_t i=0; i<num_aggregators; i++)
         {
             // Resolve DNS address, use sockfd as temp storage 
@@ -147,8 +150,16 @@ namespace omnireduce {
                 sockfd = socket(iterator->ai_family, iterator->ai_socktype, iterator->ai_protocol);
                 if (sockfd >= 0)
                 {
-                    // Client mode. Initiate connection to remote 
-                    if ((tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen)))
+                    // Client mode. Initiate connection to remote
+                    tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen);
+                    while (tmp==-1 && retry_times<max_retry_times)
+                    {
+                        retry_times++;
+                        sleep(5);
+                        std::cout<<retry_times<<" time retry..."<<std::endl;
+                        tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen);
+                    }
+                    if (tmp==-1)
                     {
                         fprintf(stdout, "failed connect \n");
                         close(sockfd);
@@ -366,6 +377,7 @@ namespace omnireduce {
         int sockfd = -1;
         int listenfd = 0;
         int c;
+        int flag=1,len=sizeof(int);
         struct sockaddr_in client;
         char ipAddr[INET_ADDRSTRLEN];
 	    struct addrinfo hints;
@@ -394,6 +406,11 @@ namespace omnireduce {
                 /* Server mode. Set up listening socket an accept a connection */
                 listenfd = sockfd;
                 sockfd = -1;
+                if( setsockopt(listenfd, SOL_SOCKET, SO_REUSEADDR, &flag, len) == -1)
+	            {
+	            	fprintf(stderr, "setsockopt error\n");
+	            	exit(1);
+	            }
                 if (bind(listenfd, iterator->ai_addr, iterator->ai_addrlen))
                 {
                     fprintf(stderr, "socket bind error\n");

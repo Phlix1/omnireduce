@@ -1,5 +1,6 @@
 #include "omnireduce/context.hpp"
 #include "omnireduce/omnireduce.hpp"
+#include "omnireduce/aggcontext.hpp"
 #ifdef USE_CUDA
 #include "omnireduce/cuda_utils.hpp"
 #endif
@@ -22,27 +23,44 @@ namespace omnireduce {
         return NULL;
     }
 
+    void *OmniAggMaster(void *tmp) {
+        omnireduce::AggContext& omniAggContext = omnireduce::AggContext::getInstance();
+        omniAggContext.agg_listen();
+        return NULL;
+    }
+
     OmniContext::OmniContext() :
             num_worker_threads (1), master_ready(0), data_ready(0), results(0), tensor_update_ptr(NULL), result_id(0), one_msec(1), one_microsec(1) {
         
-        tid_counter.store(0);
-        threadid.store(0);
         parse_parameters();
-#ifdef USE_CUDA
         int ndevs = omnireduce_par.getNdevs();
         uint32_t gpu_devId = omnireduce_par.getGpuDeviceId();
+        uint32_t is_colocated = omnireduce_par.getIsColocated();
+        char *local_rank_string;
+        char hostname[1024];
+        FILE *fp=NULL;
         if (ndevs>1) {
-            char *local_rank_string;
             local_rank_string = getenv("LOCAL_RANK");
             if(!local_rank_string) {
                 std::cerr<<"LOCAL_RANK not set."<<ret<<std::endl;
                 exit(1);
             }
-            FILE *fp=NULL;
             localrank = atoi(local_rank_string);
-            char hostname[1024];
             getHostName(hostname, 1024);
             std::cout<<hostname<<" Local rank: "<<localrank<<std::endl;
+            if (is_colocated==1 && gpu_devId==localrank)
+                pthread_create(&masterAggThread, NULL, OmniAggMaster, NULL);
+        }
+        else {
+            if (is_colocated==1)
+                pthread_create(&masterAggThread, NULL, OmniAggMaster, NULL);
+        }
+        tid_counter.store(0);
+        threadid.store(0);
+        
+#ifdef USE_CUDA
+        
+        if (ndevs>1) {
             if (localrank==gpu_devId) {
                 ncclGetUniqueId(&id);
                 fp = fopen(hostname,"w+");

@@ -36,6 +36,7 @@ namespace omnireduce {
             void init();
             void StartMaster();
             void StopMaster();
+            void agg_listen();
             int post_receive_address(uint32_t);
             int post_send_ready(uint32_t);
             void wait_master_ready();

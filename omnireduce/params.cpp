@@ -68,6 +68,16 @@ namespace omnireduce {
                 exit(1);
             }
         }
+        if (worker_ip_str==aggregator_ips_str)
+        {
+            omnireduce_par.setIsColocated(1);
+            std::cout<<"Colocated Mode"<<std::endl;
+        }
+        else
+        {
+            omnireduce_par.setIsColocated(0);
+            std::cout<<"Delocated Mode"<<std::endl;
+        }
         omnireduce_par.setNumWorkerThreads(num_threads);
         omnireduce_par.setWorkerCoreId(worker_cores);
         omnireduce_par.setAggregatorCoreId(aggregator_cores);
@@ -106,6 +116,7 @@ namespace omnireduce {
         ib_port = 1;
         gid_idx = 2;
         sl = 2;
+        is_colocated = 0;
     }
     omnireduce_params::~omnireduce_params() {}
 }
