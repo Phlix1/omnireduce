@@ -78,6 +78,7 @@ namespace omnireduce {
             virtual ~OmniContext();
 
             pthread_t masterThread;
+            pthread_t masterAggThread;
 
             std::atomic_uint_fast32_t tid_counter;
             boost::mutex master_ready_mutex, data_ready_mutex, result_mutex;

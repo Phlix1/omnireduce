@@ -45,6 +45,7 @@ namespace omnireduce {
             uint32_t direct_memory;
             uint32_t adaptive_blocksize;
             uint32_t gpu_devId;
+            uint32_t is_colocated;
             float threshold;
             char *ib_hca;
             int ib_port;
@@ -57,6 +58,9 @@ namespace omnireduce {
         public:
             omnireduce_params();
             ~omnireduce_params();
+            void setIsColocated(uint32_t c) {
+                is_colocated = c;
+            }
             void setIbPort(int p) {
                 ib_port=p;
             }
@@ -174,6 +178,9 @@ namespace omnireduce {
             }
             void setThreshold(float th) {
                 threshold = th;
+            }
+            uint32_t getIsColocated() {
+                return is_colocated;
             }
             uint32_t getBuffUnitSize() {
                 return buff_unit_size;

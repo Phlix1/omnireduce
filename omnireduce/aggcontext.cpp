@@ -73,28 +73,7 @@ namespace omnireduce {
             master_ready_event.notify_one();
     }
 
-    void AggContext::StartMaster() {
-        int ret = 0;
-        int coreid = omnireduce_par.getAggregatorCoreId(0);
-        if (coreid<0)
-        {
-            ret = pthread_create(&aggmasterThread, NULL, OmniAggregatorMaster, this);
-        }
-        else
-        {
-            pthread_attr_t attr;
-            cpu_set_t cpus;
-            pthread_attr_init(&attr);
-            CPU_ZERO(&cpus);
-            CPU_SET(coreid, &cpus);
-            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
-            ret = pthread_create(&aggmasterThread, &attr, OmniAggregatorMaster, this);
-        }
-        if (ret) {
-            std::cerr<<"Error starting aggregator master thread"<<std::endl;
-            exit(1);
-        }
-        wait_master_ready();
+    void AggContext::agg_listen() {
         int ne=0;
         int worker_count = 0;
         uint32_t block_size = omnireduce_par.getBlockSize();
@@ -200,6 +179,30 @@ namespace omnireduce {
                 }
             } //if (direct_memory)
         } //while (!force_quit)
+    }
+
+    void AggContext::StartMaster() {
+        int ret = 0;
+        int coreid = omnireduce_par.getAggregatorCoreId(0);
+        if (coreid<0)
+        {
+            ret = pthread_create(&aggmasterThread, NULL, OmniAggregatorMaster, this);
+        }
+        else
+        {
+            pthread_attr_t attr;
+            cpu_set_t cpus;
+            pthread_attr_init(&attr);
+            CPU_ZERO(&cpus);
+            CPU_SET(coreid, &cpus);
+            pthread_attr_setaffinity_np(&attr, sizeof(cpu_set_t), &cpus);
+            ret = pthread_create(&aggmasterThread, &attr, OmniAggregatorMaster, this);
+        }
+        if (ret) {
+            std::cerr<<"Error starting aggregator master thread"<<std::endl;
+            exit(1);
+        }
+        wait_master_ready();
     }
     void AggContext::StopMaster() {
         force_quit = true;

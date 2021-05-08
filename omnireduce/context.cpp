@@ -1,5 +1,6 @@
 #include "omnireduce/context.hpp"
 #include "omnireduce/omnireduce.hpp"
+#include "omnireduce/aggcontext.hpp"
 #ifdef USE_CUDA
 #include "omnireduce/cuda_utils.hpp"
 #endif
@@ -12,10 +13,19 @@ namespace omnireduce {
 
         return NULL;
     }
+    void *OmniAggMaster(void *tmp) {
+        omnireduce::AggContext& omniAggContext = omnireduce::AggContext::getInstance();
+        omniAggContext.agg_listen();
+        return NULL;
+    }
 
     OmniContext::OmniContext() :
             num_worker_threads (1), master_ready(0), data_ready(0), results(0), tensor_update_ptr(NULL), result_id(0), one_msec(1), one_microsec(1) {
         
+        parse_parameters();
+        uint32_t is_colocated = omnireduce_par.getIsColocated();
+        if (is_colocated==1)
+            pthread_create(&masterAggThread, NULL, OmniAggMaster, NULL);
         tid_counter.store(0);
         threadid.store(0);
         init();
@@ -608,7 +618,6 @@ namespace omnireduce {
 
     void OmniContext::init() {
         //step 1 - read and set para
-        parse_parameters();
         int cycle_buffer = sysconf(_SC_PAGESIZE);
         
         int num_devices;

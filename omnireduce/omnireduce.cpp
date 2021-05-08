@@ -120,6 +120,8 @@ namespace omnireduce {
         struct addrinfo *resolved_addr = NULL;
         struct addrinfo *iterator;
         int tmp;
+        int max_retry_times = 5;
+        int retry_times = 0;
         char service[6];
         int sockfd = -1;
 	    struct addrinfo hints;
@@ -148,7 +150,15 @@ namespace omnireduce {
                 if (sockfd >= 0)
                 {
                     // Client mode. Initiate connection to remote 
-                    if ((tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen)))
+                    tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen);
+                    while (tmp==-1 && retry_times<max_retry_times)
+                    {
+                        retry_times++;
+                        sleep(5);
+                        std::cout<<retry_times<<" time retry..."<<std::endl;
+                        tmp = connect(sockfd, iterator->ai_addr, iterator->ai_addrlen);
+                    }
+                    if (tmp==-1)
                     {
                         fprintf(stdout, "failed connect \n");
                         close(sockfd);
