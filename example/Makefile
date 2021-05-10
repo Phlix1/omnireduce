@@ -1,12 +1,14 @@
-MPICC  := /usr/bin/mpicxx
+MPICC  := mpicxx
 CC  := g++
-INCLUDE  :=-I/usr/include/mpich -I../build/include -I${CONDA_PREFIX}/include
-LIBPATH  :=-L/usr/lib/ -L../build -L${CONDA_PREFIX}/lib
+INCLUDE  :=-I../build/include
+LIBPATH  :=-L../build
 LDLIBS  := -libverbs -lboost_system -lboost_thread -lboost_chrono -lboost_program_options -lomnireduce 
 CXXFLAGS  := -Wall -Wextra -fPIC -O3 -std=c++11 
 
 APPS  :=  worker aggregator
 ifeq ($(USE_CUDA),ON)
+INCLUDE += -I${CUDA_HOME}/include
+LIBPATH += -L${CUDA_HOME}/lib
 APPS += cuda_worker
 CXXFLAGS += -DUSE_CUDA
 LDLIBS += -lcudart
