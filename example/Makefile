@@ -8,7 +8,7 @@ CXXFLAGS  := -Wall -Wextra -fPIC -O3 -std=c++11
 APPS  :=  worker aggregator
 ifeq ($(USE_CUDA),ON)
 INCLUDE += -I${CUDA_HOME}/include
-LIBPATH += -L${CUDA_HOME}/lib
+LIBPATH += -L${CUDA_HOME}/lib -L${CUDA_HOME}/lib64
 APPS += cuda_worker
 CXXFLAGS += -DUSE_CUDA
 LDLIBS += -lcudart
