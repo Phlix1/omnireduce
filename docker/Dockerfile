@@ -100,3 +100,11 @@ RUN cd $EXPS_PATH/models/BERT/dataset/checkpoint && \
     wget --content-disposition https://api.ngc.nvidia.com/v2/models/nvidia/bert_pyt_ckpt_large_qa_squad11_amp/versions/19.09.0/zip -O bert_pyt_ckpt_large_qa_squad11_amp_19.09.0.zip && \
     unzip bert_pyt_ckpt_large_qa_squad11_amp_19.09.0.zip
 RUN cd $EXPS_PATH/models/BERT && ln -s $OMNIREDUCE_PATH/example/omnireduce.cfg omnireduce.cfg && mkdir results
+
+RUN pip install jupyter
+RUN pip install matplotlib
+RUN ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa
+RUN cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys
+RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
+RUN sed -i 's/#   StrictHostKeyChecking ask/    StrictHostKeyChecking no/' /etc/ssh/ssh_config
+ENTRYPOINT /usr/sbin/sshd -p 2222 && /bin/bash
