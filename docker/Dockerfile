@@ -103,8 +103,6 @@ RUN cd $EXPS_PATH/models/BERT && ln -s $OMNIREDUCE_PATH/example/omnireduce.cfg o
 
 RUN pip install jupyter
 RUN pip install matplotlib
-RUN ssh-keygen -q -t rsa -N '' -f ~/.ssh/id_rsa
-RUN cat ~/.ssh/id_rsa.pub > ~/.ssh/authorized_keys
 RUN sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
 RUN sed -i 's/#   StrictHostKeyChecking ask/    StrictHostKeyChecking no/' /etc/ssh/ssh_config
 ENTRYPOINT /usr/sbin/sshd -p 2222 && /bin/bash

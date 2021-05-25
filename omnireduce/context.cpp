@@ -64,7 +64,7 @@ namespace omnireduce {
         boost::unique_lock<boost::mutex> lock(data_ready_mutex);
 
         while (data_ready!=(uint32_t)(thread_id+1)) {
-            //return false;
+            return false;
             if (data_push_event.wait_for(lock, one_microsec) == boost::cv_status::timeout)
                 return false;
         }
@@ -96,7 +96,7 @@ namespace omnireduce {
         boost::unique_lock<boost::mutex> lock(result_mutex);
 
         while (results == num_worker_threads) {
-            //return false;
+            return false;
             if (result_pop_event.wait_for(lock, one_microsec) == boost::cv_status::timeout)
                 return false;
         }
