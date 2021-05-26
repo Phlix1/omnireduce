@@ -332,6 +332,12 @@ namespace omnireduce {
                         typecode = FLOAT32;
                         element_size = sizeof(float);
                         break;
+#ifdef USE_CNAT
+                    case UINT8:
+                        typecode = UINT8;
+                        element_size = sizeof(uint8_t);
+                        break;
+#endif
                     default:
                         std::cerr<<"Data type error"<<std::endl;
                         exit(1);
@@ -372,6 +378,13 @@ namespace omnireduce {
                                                 d_bitmap+b_chunk_size*i/element_size/block_size,
                                                 b_chunk_size/element_size,
                                                 block_size, b_stream, 0.0);
+#ifdef USE_CNAT
+                           case UINT8:
+                                compute_bitmap((uint8_t*)tu.ptr+start_offset+b_chunk_size*i/element_size,
+                                                d_bitmap+b_chunk_size*i/element_size/block_size,
+                                                b_chunk_size/element_size,
+                                                block_size, b_stream, uint8_t(0));
+#endif
                             default:
                                 std::cerr<<"Data type error"<<std::endl;
                                 exit(1);
@@ -397,6 +410,14 @@ namespace omnireduce {
                                             tensor_size-(b_chunk_num-1)*b_chunk_size/element_size,
                                             block_size, b_stream, 0.0);
                             break;
+#ifdef USE_CNAT
+                        case UINT8:
+                            compute_bitmap((uint8_t*)tu.ptr+start_offset+b_chunk_size*(b_chunk_num-1)/element_size,
+                                           d_bitmap+b_chunk_size*(b_chunk_num-1)/element_size/block_size,
+                                           tensor_size-(b_chunk_num-1)*b_chunk_size/element_size,
+                                           block_size, b_stream, uint8_t(0));
+                            break;
+#endif
                         default:
                             std::cerr<<"Data type error"<<std::endl;
                             exit(1);
@@ -740,6 +761,12 @@ namespace omnireduce {
                         typecode = FLOAT32;
                         element_size = sizeof(float);
                         break;
+#ifdef USE_CNAT
+                    case UINT8:
+                        typecode = UINT8;
+                        element_size = sizeof(uint8_t);
+                        break;
+#endif
                     default:
                         std::cerr<<"Data type error"<<std::endl;
                         exit(1);

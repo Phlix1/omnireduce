@@ -1,6 +1,8 @@
 #include "omnireduce/aggregator.hpp"
 #include "omnireduce/aggcontext.hpp"
-
+#ifdef USE_CNAT
+#include <array>
+#endif
 namespace omnireduce {
     thread_local static uint32_t num_server_threads;
     thread_local static uint32_t thread_id;
@@ -15,6 +17,42 @@ namespace omnireduce {
     thread_local static uint32_t buff_unit_size;
     thread_local static uint32_t num_comm_buff;
     thread_local static uint32_t typecode;
+#ifdef USE_CNAT
+    thread_local static constexpr uint32_t encoding_to_sign_and_exp[] =
+            { 0,  18,  19,  20,  21,  22,  23,  24,  25,  26,  27,  28,  29,  30,
+              31,  32,  33,  34,  35,  36,  37,  38,  39,  40,  41,  42,  43,  44,
+              45,  46,  47,  48,  49,  50,  51,  52,  53,  54,  55,  56,  57,  58,
+              59,  60,  61,  62,  63,  64,  65,  66,  67,  68,  69,  70,  71,  72,
+              73,  74,  75,  76,  77,  78,  79,  80,  81,  82,  83,  84,  85,  86,
+              87,  88,  89,  90,  91,  92,  93,  94,  95,  96,  97,  98,  99, 100,
+              101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114,
+              115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128,
+              129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142,
+              143, 144, 256, 274, 275, 276, 277, 278, 279, 280, 281, 282, 283, 284,
+              285, 286, 287, 288, 289, 290, 291, 292, 293, 294, 295, 296, 297, 298,
+              299, 300, 301, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312,
+              313, 314, 315, 316, 317, 318, 319, 320, 321, 322, 323, 324, 325, 326,
+              327, 328, 329, 330, 331, 332, 333, 334, 335, 336, 337, 338, 339, 340,
+              341, 342, 343, 344, 345, 346, 347, 348, 349, 350, 351, 352, 353, 354,
+              355, 356, 357, 358, 359, 360, 361, 362, 363, 364, 365, 366, 367, 368,
+              369, 370, 371, 372, 373, 374, 375, 376, 377, 378, 379, 380, 381, 382,
+              383, 384, 385, 386, 387, 388, 389, 390, 391, 392, 393, 394, 395, 396,
+              397, 398, 399, 400};
+
+    uint8_t cnat_compress_cpu(const float& input){
+        if (input == 0) return 0;
+        int exp;
+        float prob = abs(frexpf(input, &exp)) * 2. - 1.; // [0.5, 1) -> [0, 1)
+        if (0.5 >= prob) exp -= 1;
+        exp += 127;
+        uint8_t encode;
+        if (exp<=17) encode = 0;
+        else if (exp<=143) encode = uint8_t(exp-17);
+        else encode = 127;
+        if (input < 0) encode += 128;
+        return encode;
+    }
+#endif
 
     int post_send_server(AggContext* dctx_ptr, uint32_t num, uint32_t slot, uint32_t qp_num, uint32_t buff_index)
     {
@@ -214,7 +252,7 @@ namespace omnireduce {
                                                                      +thread_id*(2*message_size)*num_slots_per_thread+slot*(2*message_size))*buff_unit_size
                                                                      +k*block_size*element_size);
                                             for(uint32_t j=0; j<block_size; j++)
-                                                aggregation_pool_int32[j] += recv_buff_int32[j];  
+                                                aggregation_pool_int32[j] += recv_buff_int32[j];
                                         }
                                         break;
                                     default:
@@ -428,6 +466,21 @@ namespace omnireduce {
                                         }
                                     }
                                     break;
+#ifdef USE_CNAT
+                                case UINT8:
+                                    {
+                                        float *aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->agg_buf + (block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
+                                        auto *send_buff_uint8 = (uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
+                                                                                                                  +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float);
+                                        auto *recv_buff_uint8 = (uint8_t*)dctx_ptr->comm_buf+(wid*num_slots_per_thread*block_size*num_server_threads
+                                                                                                           +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float);
+                                        for(uint32_t k=0; k<block_size; k++){
+                                            uint32_t sign_and_exp = encoding_to_sign_and_exp[recv_buff_uint8[k]] << 23;
+                                            aggregation_pool_float32[k] += reinterpret_cast<float &>(sign_and_exp);
+                                        }
+                                    }
+                                    break;
+#endif
                                 case INT32:
                                     {
                                         int32_t *aggregation_pool_int32 = (int32_t *)((uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
@@ -451,7 +504,15 @@ namespace omnireduce {
                             }
                             if(dctx_ptr->current_offset_thread[thread_id][slot]<min_next_offset[slot])
                             {
-                                switch (dctx_ptr->typecode)
+#ifdef USE_CNAT
+                                auto *aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->agg_buf + (block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
+                                auto *send_buff_uint8 = (uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
+                                                                                      +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float);
+                                for(uint32_t k=0; k<block_size; k++){
+                                    send_buff_uint8[k] = cnat_compress_cpu(aggregation_pool_float32[k]);
+                                }
+#else
+				switch (dctx_ptr->typecode)
                                 {
                                     case FLOAT32:
                                         {
@@ -470,13 +531,14 @@ namespace omnireduce {
                                                                                 +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(int32_t));
                                             for(uint32_t k=0; k<block_size; k++){
                                                 shadow_aggregation_pool_int32[k] = 0;
-                                            }    
+                                            }
                                         }
                                         break;
                                     default:
                                         std::cerr<<"Data type error"<<std::endl;
                                         exit(1);
-                                }                       
+                                }
+#endif
                                 for(uint32_t k=0; k<num_workers; k++)
                                 {
                                     if (min_next_offset[slot]==block_next_offset[slot][k])

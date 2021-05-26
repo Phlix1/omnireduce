@@ -53,12 +53,18 @@ namespace omnireduce {
 
     enum TensorUpdateType {
         NONE = 0, INT32 = 1, FLOAT32 = 2, FLOAT16 = 3
+#ifdef USE_CNAT
+        , UINT8 = 4
+#endif
     };
     enum OpType {
         NOP = 0, ALLREDUCE = 1, BROADCAST = 2, ACK = 3
     };
     struct TensorUpdate {
         void* ptr;
+#ifdef USE_CNAT
+        void* original_ptr;
+#endif
         uint32_t count;
         uint32_t start_idx;
         int32_t id;

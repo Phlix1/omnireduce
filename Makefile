@@ -20,6 +20,11 @@ CXXFLAGS += -fPIC
 CC  := g++
 LD  := g++
 endif
+ifeq ($(USE_CNAT),ON)
+$(info "USE_CNAT ON")
+CXXFLAGS += -DUSE_CNAT
+LDLIBS += -lcurand
+endif
 
 SOURCE:=${wildcard ${SOURCEDIR}/*.cpp}
 OBJS:=${patsubst ${SOURCEDIR}/%.cpp,${SOURCEDIR}/%.o,${SOURCE}}

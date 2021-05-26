@@ -9,6 +9,9 @@
 
 #ifdef USE_CUDA
 #include <cuda_runtime.h>
+#ifdef USE_CNAT
+#include <curand.h>
+#endif
 #endif
 
 namespace omnireduce {
@@ -54,6 +57,9 @@ namespace omnireduce {
             void AllReduce(int32_t*, int, cudaStream_t, int);
             void *host_tensor;
             uint8_t *bitmap;
+#ifdef USE_CNAT
+            curandGenerator_t gen;
+#endif
 #endif
             int workerId;
             int *socks;

@@ -15,14 +15,19 @@ namespace omnireduce {
 
     OmniContext::OmniContext() :
             num_worker_threads (1), master_ready(0), data_ready(0), results(0), tensor_update_ptr(NULL), result_id(0), one_msec(1), one_microsec(1) {
-        
+#ifdef USE_CNAT
+        curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
+        curandSetPseudoRandomGeneratorSeed(gen, 1234ULL);
+#endif
         tid_counter.store(0);
         threadid.store(0);
         init();
         StartMaster();
     }
     OmniContext::~OmniContext() {
-
+#ifdef USE_CNAT
+        curandDestroyGenerator(gen);
+#endif
         StopMaster();
     }
 
@@ -445,6 +450,11 @@ namespace omnireduce {
         float threshold = omnireduce_par.getThreshold();
         if (count%block_size!=0)
             block_count += 1;
+#ifdef USE_CNAT
+        uint8_t *cnat_compressed;
+        cudaMalloc((void **)&cnat_compressed, count);
+        cnat_compress(ptr, cnat_compressed, count, &gen);
+#endif
         uint8_t *d_bitmap;
         cudaMalloc((void **)&d_bitmap, block_count);
         compute_bitmap(ptr, d_bitmap, count, block_size, stream, threshold);
@@ -453,7 +463,11 @@ namespace omnireduce {
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
         if (direct_memory)
         {
+#ifdef USE_CNAT
+            send_address(count, UINT8);
+#else
             send_address(count, FLOAT32);
+#endif
         }
         else
         {
@@ -463,12 +477,18 @@ namespace omnireduce {
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         //send tensor
         TensorUpdate tu;
+#ifdef USE_CNAT
+        tu.ptr = cnat_compressed;
+        tu.type = UINT8;
+        tu.original_ptr = ptr;
+#else
         tu.ptr = ptr;
+        tu.type = FLOAT32;
+#endif
         tu.count = count;
         tu.start_idx = 0;
         tu.id = tensor_id;
         tu.root = 0;
-        tu.type = FLOAT32;
         tu.op = ALLREDUCE;
         tu.bitmap_ptr = bitmap;
         tu.block_count = block_count;
@@ -478,6 +498,9 @@ namespace omnireduce {
         send_tensor(&tu);       
         //receive result
         receive_result(tensor_id);
+#ifdef USE_CNAT
+        cnat_decompress((uint8_t*)tu.ptr, (float*)tu.original_ptr, count);
+#endif
         cudaFree(d_bitmap);
     }
 

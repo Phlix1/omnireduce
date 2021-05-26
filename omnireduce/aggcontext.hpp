@@ -18,6 +18,9 @@ namespace omnireduce {
             uint32_t element_size;
             int *socks;
             void *comm_buf;
+#ifdef USE_CNAT
+            void *agg_buf;
+#endif
             struct ibv_context *ib_ctx;
             struct ibv_port_attr port_attr;
             struct ibv_pd *pd;
