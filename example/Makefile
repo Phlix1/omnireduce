@@ -26,4 +26,4 @@ aggregator: aggregator_test.cpp
 	${CC} ${INCLUDE} ${LIBPATH} ${CXXFLAGS} -o $@ $^ ${LDLIBS}
 
 clean:
-	rm -f *.o ${APPS}
+	rm -f *.o ${APPS} cuda_worker
