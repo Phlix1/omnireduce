@@ -510,6 +510,7 @@ namespace omnireduce {
                                                                                       +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float);
                                 for(uint32_t k=0; k<block_size; k++){
                                     send_buff_uint8[k] = cnat_compress_cpu(aggregation_pool_float32[k]);
+				    aggregation_pool_float32[k] = 0;
                                 }
 #else
 				switch (dctx_ptr->typecode)
