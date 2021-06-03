@@ -68,14 +68,14 @@ __global__ void cnat_compress_cuda_kernel(
 }
 
 
-void cnat_compress(float* input, uint8_t* output, int count, curandGenerator_t* gen) {
+void cnat_compress(float* input, uint8_t* output, int count, cudaStream_t stream, curandGenerator_t* gen) {
     const int threads = 1024;
     auto blocks = count/threads;
     if (count%threads || !blocks) blocks++;
     float *rand;
     cudaMalloc((void **)&rand, count*sizeof(float)); // (0, 1]
     curandGenerateUniform(*gen, rand, count);
-    cnat_compress_cuda_kernel<<<blocks, threads>>>(
+    cnat_compress_cuda_kernel<<<blocks, threads, 0, stream>>>(
             input,
             output,
             rand,
@@ -97,11 +97,11 @@ __global__ void cnat_decompress_cuda_kernel(
   }
 }
 
-void cnat_decompress(uint8_t* input, float* output, int count) {
+void cnat_decompress(uint8_t* input, float* output, int count, cudaStream_t stream) {
   const int threads = 1024;
   auto blocks = count/threads;
   if (count%threads || !blocks) blocks++;
-  cnat_decompress_cuda_kernel<<<blocks, threads>>>(
+  cnat_decompress_cuda_kernel<<<blocks, threads, 0, stream>>>(
     input,
     output,
     count);

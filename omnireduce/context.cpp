@@ -451,15 +451,16 @@ namespace omnireduce {
         if (count%block_size!=0)
             block_count += 1;
 #ifdef USE_CNAT
+        cudaStream_t cnat_stream;
+        cudaStreamCreate(&cnat_stream);
         uint8_t *cnat_compressed;
         cudaMalloc((void **)&cnat_compressed, count);
-        cnat_compress(ptr, cnat_compressed, count, &gen);
+        cnat_compress(ptr, cnat_compressed, count, cnat_stream, &gen);
 #endif
         uint8_t *d_bitmap;
         cudaMalloc((void **)&d_bitmap, block_count);
         compute_bitmap(ptr, d_bitmap, count, block_size, stream, threshold);
-        cudaStreamSynchronize(stream);
-        cudaMemcpy((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost);
+        cudaMemcpyAsync((uint8_t *)bitmap, (uint8_t *)d_bitmap, block_count, cudaMemcpyDeviceToHost, stream);
         uint32_t direct_memory = omnireduce_par.getDirectMemory();
         if (direct_memory)
         {
@@ -495,11 +496,14 @@ namespace omnireduce {
         tu.devId = -1;
         tu.async = false;
         tu.bitmap_async = false;
-        send_tensor(&tu);       
+        cudaStreamSynchronize(stream);
+        send_tensor(&tu);
         //receive result
         receive_result(tensor_id);
 #ifdef USE_CNAT
-        cnat_decompress((uint8_t*)tu.ptr, (float*)tu.original_ptr, count);
+        cnat_decompress((uint8_t*)tu.ptr, (float*)tu.original_ptr, count, cnat_stream);
+        cudaStreamSynchronize(cnat_stream);
+        cudaStreamDestroy(cnat_stream);
 #endif
         cudaFree(d_bitmap);
     }
