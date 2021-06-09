@@ -3,11 +3,20 @@
 #ifdef USE_CUDA
 #include "omnireduce/cuda_utils.hpp"
 #endif
-
-#ifdef __JETBRAINS_IDE__
-#define USE_CNAT
-#define USE_CUDA
+#ifdef USE_CNAT
+#include <ctime>
 #endif
+
+#define CUDA_CALL(x) do { \
+      cudaError_t _m_cudaStat = x; \
+      if((_m_cudaStat) != cudaSuccess) { \
+      fprintf(stderr, "Error %s at line %d in file %s", \
+      cudaGetErrorString(_m_cudaStat), __LINE__, __FILE__); \
+      exit(1);}} while(0)
+
+#define CURAND_CALL(x) do { if((x) != CURAND_STATUS_SUCCESS) { \
+      printf("CURAND rrror at %s:%d\n",__FILE__,__LINE__);            \
+      exit(1);}} while(0)
 
 namespace omnireduce {
     void *OmniMaster(void *ctx) {
@@ -21,8 +30,8 @@ namespace omnireduce {
     OmniContext::OmniContext() :
             num_worker_threads (1), master_ready(0), data_ready(0), results(0), tensor_update_ptr(NULL), result_id(0), one_msec(1), one_microsec(1) {
 #ifdef USE_CNAT
-        curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT);
-        curandSetPseudoRandomGeneratorSeed(gen, 1234ULL);
+        CURAND_CALL(curandCreateGenerator(&gen, CURAND_RNG_PSEUDO_DEFAULT));
+        CURAND_CALL(curandSetPseudoRandomGeneratorSeed(gen, time(NULL)));
 #endif
         tid_counter.store(0);
         threadid.store(0);
@@ -31,7 +40,7 @@ namespace omnireduce {
     }
     OmniContext::~OmniContext() {
 #ifdef USE_CNAT
-        curandDestroyGenerator(gen);
+        CURAND_CALL(curandDestroyGenerator(gen));
 #endif
         StopMaster();
     }
@@ -457,7 +466,7 @@ namespace omnireduce {
         if (count%block_size!=0)
             block_count += 1;
 #ifdef USE_CNAT
-        cudaStreamCreate(&tu.cnat_stream);
+        CUDA_CALL(cudaStreamCreate(&tu.cnat_stream));
         cnat_compress(ptr, (uint8_t*)cuda_comm_buf, count, tu.cnat_stream, &gen);
 #endif
         uint8_t *d_bitmap;
@@ -502,8 +511,8 @@ namespace omnireduce {
         receive_result(tensor_id);
 #ifdef USE_CNAT
         cnat_decompress((uint8_t*)cuda_comm_buf, ptr, count, tu.cnat_stream);
-        cudaStreamSynchronize(tu.cnat_stream);
-        cudaStreamDestroy(tu.cnat_stream);
+        CUDA_CALL(cudaStreamSynchronize(tu.cnat_stream));
+        CUDA_CALL(cudaStreamDestroy(tu.cnat_stream));
 #endif
         cudaFree(d_bitmap);
     }

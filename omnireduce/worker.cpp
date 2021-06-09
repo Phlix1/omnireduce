@@ -4,11 +4,6 @@
 #include "omnireduce/cuda_utils.hpp"
 #endif
 
-#ifdef __JETBRAINS_IDE__
-#define USE_CNAT
-#define USE_CUDA
-#endif
-
 namespace omnireduce {
     thread_local static uint32_t num_worker_threads;
     thread_local static int32_t devId;

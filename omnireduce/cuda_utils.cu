@@ -1,4 +1,16 @@
 #include "cuda_utils.hpp"
+
+#define CUDA_CALL(x) do { \
+      cudaError_t _m_cudaStat = x; \
+      if((_m_cudaStat) != cudaSuccess) { \
+      fprintf(stderr, "Error %s at line %d in file %s", \
+      cudaGetErrorString(_m_cudaStat), __LINE__, __FILE__); \
+      exit(1);}} while(0)
+
+#define CURAND_CALL(x) do { if((x) != CURAND_STATUS_SUCCESS) { \
+      printf("CURAND rrror at %s:%d\n",__FILE__,__LINE__);            \
+      exit(1);}} while(0)
+
 template <typename scalar_t>
 __global__ void bitmap_cuda_kernel(scalar_t* input, uint8_t* bitmap, int64_t len, scalar_t threshold) {
     const auto index = blockIdx.x * blockDim.x + threadIdx.x;
@@ -46,16 +58,18 @@ void compute_bitmap(uint8_t* d_tensor, uint8_t* d_bitmap, int64_t tensor_size, u
 __global__ void cnat_compress_cuda_kernel(
     float* __restrict__ input,
     uint8_t* __restrict__ output,
-    const float* __restrict__ rand,
     int len) {
   const int index = blockIdx.x * blockDim.x + threadIdx.x;
   if(index < len) {
     if (input[index] == 0)
       output[index] = 0;
     else {
+      int rand_bits = output[index];
+      rand_bits <<= 15;
       int exp;
-      float prob = abs(frexpf(input[index], &exp)) / 0.5 - 1.; // [0.5, 1) -> [0, 1)
-      if (rand[index] >= prob) exp -= 1;
+      int prob = reinterpret_cast<int &>(input[index]) & 0b00000000011111111000000000000000;
+      frexpf(input[index], &exp);
+      if (rand_bits >= prob) exp -= 1;
       exp += 127;
       uint8_t encode;
       if (exp<=17) encode = 0;
@@ -67,18 +81,19 @@ __global__ void cnat_compress_cuda_kernel(
   }
 }
 
-
+/*
+  generate random bits using the output buffer (8 bits for each element)
+  and compare with the 8 most significant bits of mantissa
+*/
 void cnat_compress(float* input, uint8_t* output, int count, cudaStream_t stream, curandGenerator_t* gen) {
     const int threads = 1024;
     auto blocks = count/threads;
     if (count%threads || !blocks) blocks++;
-    float *rand;
-    cudaMalloc((void **)&rand, count*sizeof(float)); // (0, 1]
-    curandGenerateUniform(*gen, rand, count);
+    CURAND_CALL(curandSetStream(*gen, stream));
+    CURAND_CALL(curandGenerate(*gen, (uint32_t*)output, count/4)); // (0, 1]
     cnat_compress_cuda_kernel<<<blocks, threads, 0, stream>>>(
             input,
             output,
-            rand,
             count);
 }
 
