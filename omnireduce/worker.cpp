@@ -4,6 +4,11 @@
 #include "omnireduce/cuda_utils.hpp"
 #endif
 
+#ifdef __JETBRAINS_IDE__
+#define USE_CNAT
+#define USE_CUDA
+#endif
+
 namespace omnireduce {
     thread_local static uint32_t num_worker_threads;
     thread_local static int32_t devId;
@@ -332,12 +337,6 @@ namespace omnireduce {
                         typecode = FLOAT32;
                         element_size = sizeof(float);
                         break;
-#ifdef USE_CNAT
-                    case UINT8:
-                        typecode = UINT8;
-                        element_size = sizeof(uint8_t);
-                        break;
-#endif
                     default:
                         std::cerr<<"Data type error"<<std::endl;
                         exit(1);
@@ -378,13 +377,6 @@ namespace omnireduce {
                                                 d_bitmap+b_chunk_size*i/element_size/block_size,
                                                 b_chunk_size/element_size,
                                                 block_size, b_stream, 0.0);
-#ifdef USE_CNAT
-                           case UINT8:
-                                compute_bitmap((uint8_t*)tu.ptr+start_offset+b_chunk_size*i/element_size,
-                                                d_bitmap+b_chunk_size*i/element_size/block_size,
-                                                b_chunk_size/element_size,
-                                                block_size, b_stream, uint8_t(0));
-#endif
                             default:
                                 std::cerr<<"Data type error"<<std::endl;
                                 exit(1);
@@ -410,14 +402,6 @@ namespace omnireduce {
                                             tensor_size-(b_chunk_num-1)*b_chunk_size/element_size,
                                             block_size, b_stream, 0.0);
                             break;
-#ifdef USE_CNAT
-                        case UINT8:
-                            compute_bitmap((uint8_t*)tu.ptr+start_offset+b_chunk_size*(b_chunk_num-1)/element_size,
-                                           d_bitmap+b_chunk_size*(b_chunk_num-1)/element_size/block_size,
-                                           tensor_size-(b_chunk_num-1)*b_chunk_size/element_size,
-                                           block_size, b_stream, uint8_t(0));
-                            break;
-#endif
                         default:
                             std::cerr<<"Data type error"<<std::endl;
                             exit(1);
@@ -777,12 +761,16 @@ namespace omnireduce {
                 tensor_size = tu.count;
 
 #ifdef USE_CUDA
+  #ifdef USE_CNAT
+                cudaStreamSynchronize(tu.cnat_stream);
+  #else
                 cudaStreamCreate(&stream);
                 cudaEventCreate(&event);
-                cudaMemcpyAsync((uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size, 
+                cudaMemcpyAsync((uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size,
                                 tensor_size*element_size, cudaMemcpyDeviceToDevice, stream);
                 cudaEventRecord(event, stream);
                 cudaEventSynchronize(event);
+  #endif
 #else
                 memcpy((uint8_t*)(dctx_ptr->comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size, tensor_size*element_size);
 #endif
@@ -836,12 +824,14 @@ namespace omnireduce {
                 } //while (finished_slots<first_burst && !force_quit)
 
 #ifdef USE_CUDA
+  #ifndef USE_CNAT
                 cudaMemcpyAsync((uint8_t*)(tu.ptr)+start_offset*element_size, (uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, 
                                 tensor_size*element_size, cudaMemcpyDeviceToDevice, stream);
                 cudaEventRecord(event, stream);
                 cudaEventSynchronize(event);                
                 cudaStreamDestroy(stream);
                 cudaEventDestroy(event);
+  #endif
 #else
                 memcpy((uint8_t*)(tu.ptr)+start_offset*element_size, (uint8_t*)(dctx_ptr->comm_buf)+start_offset*element_size, tensor_size*element_size);
 #endif

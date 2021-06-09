@@ -14,6 +14,9 @@
 #include <byteswap.h>
 #include <iostream>
 #include "omnireduce/params.hpp"
+#ifdef USE_CNAT
+#include <cuda_runtime.h>
+#endif
 
 #define likely(x) __builtin_expect(!!(x), 1)
 #define unlikely(x) __builtin_expect(!!(x), 0)
@@ -63,7 +66,7 @@ namespace omnireduce {
     struct TensorUpdate {
         void* ptr;
 #ifdef USE_CNAT
-        void* original_ptr;
+        cudaStream_t cnat_stream;
 #endif
         uint32_t count;
         uint32_t start_idx;

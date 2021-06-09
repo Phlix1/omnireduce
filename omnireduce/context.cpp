@@ -4,6 +4,11 @@
 #include "omnireduce/cuda_utils.hpp"
 #endif
 
+#ifdef __JETBRAINS_IDE__
+#define USE_CNAT
+#define USE_CUDA
+#endif
+
 namespace omnireduce {
     void *OmniMaster(void *ctx) {
         OmniContext* d_ctx_ptr = (OmniContext *) ctx;
@@ -444,6 +449,7 @@ namespace omnireduce {
 
     void OmniContext::AllReduce_GDR(float *ptr, int count, cudaStream_t stream, int devId)
     {
+        TensorUpdate tu;
         cudaSetDevice(devId);
         uint32_t block_size = omnireduce_par.getBlockSize();
         uint32_t block_count = count/block_size;
@@ -451,11 +457,8 @@ namespace omnireduce {
         if (count%block_size!=0)
             block_count += 1;
 #ifdef USE_CNAT
-        cudaStream_t cnat_stream;
-        cudaStreamCreate(&cnat_stream);
-        uint8_t *cnat_compressed;
-        cudaMalloc((void **)&cnat_compressed, count);
-        cnat_compress(ptr, cnat_compressed, count, cnat_stream, &gen);
+        cudaStreamCreate(&tu.cnat_stream);
+        cnat_compress(ptr, (uint8_t*)cuda_comm_buf, count, tu.cnat_stream, &gen);
 #endif
         uint8_t *d_bitmap;
         cudaMalloc((void **)&d_bitmap, block_count);
@@ -477,13 +480,10 @@ namespace omnireduce {
         }
         int32_t tensor_id = tid_counter.fetch_add(1)+1;
         //send tensor
-        TensorUpdate tu;
-#ifdef USE_CNAT
-        tu.ptr = cnat_compressed;
-        tu.type = UINT8;
-        tu.original_ptr = ptr;
-#else
         tu.ptr = ptr;
+#ifdef USE_CNAT
+        tu.type = UINT8;
+#else
         tu.type = FLOAT32;
 #endif
         tu.count = count;
@@ -501,9 +501,9 @@ namespace omnireduce {
         //receive result
         receive_result(tensor_id);
 #ifdef USE_CNAT
-        cnat_decompress((uint8_t*)tu.ptr, (float*)tu.original_ptr, count, cnat_stream);
-        cudaStreamSynchronize(cnat_stream);
-        cudaStreamDestroy(cnat_stream);
+        cnat_decompress((uint8_t*)cuda_comm_buf, ptr, count, tu.cnat_stream);
+        cudaStreamSynchronize(tu.cnat_stream);
+        cudaStreamDestroy(tu.cnat_stream);
 #endif
         cudaFree(d_bitmap);
     }
@@ -738,7 +738,11 @@ namespace omnireduce {
         /* allocate the memory worker send/recv buffer */
         if (direct_memory)
         {
+#ifdef USE_CNAT
+            comm_buf_size = 1024*1024*buffer_size/4;
+#else
             comm_buf_size = 1024*1024*buffer_size;
+#endif
 #ifdef USE_CUDA
             cudaSetDevice(gpu_devId);
             ret = cudaMalloc((void **)&cuda_comm_buf, comm_buf_size);
