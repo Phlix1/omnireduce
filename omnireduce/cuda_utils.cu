@@ -47,7 +47,6 @@ void compute_bitmap(int* d_tensor, uint8_t* d_bitmap, int64_t tensor_size, uint3
   bitmap_cuda_kernel<<<block_num, block_size, 0, stream>>>(d_tensor, d_bitmap, tensor_size, threshold);
 }
 
-#ifdef USE_CNAT
 void compute_bitmap(uint8_t* d_tensor, uint8_t* d_bitmap, int64_t tensor_size, uint32_t block_size, cudaStream_t stream, uint8_t threshold) {
   uint32_t block_num = tensor_size/block_size;
   if (tensor_size%block_size!=0)
@@ -121,4 +120,4 @@ void cnat_decompress(uint8_t* input, float* output, int count, cudaStream_t stre
     output,
     count);
 }
-#endif
+

@@ -142,12 +142,10 @@ namespace omnireduce {
                                                 typecode = FLOAT32;
                                                 element_size = 4;
                                                 break;
-#ifdef USE_CNAT
                                             case UINT8:
                                                 typecode = UINT8;
                                                 element_size = 1;
                                                 break;
-#endif
                                             default:
                                                 std::cerr<<"Data type error"<<std::endl;
                                                 exit(1);
@@ -246,9 +244,7 @@ namespace omnireduce {
         uint32_t block_size = omnireduce_par.getBlockSize();
         num_server_threads = omnireduce_par.getNumWorkerThreads();
         size_t comm_buf_size = 0;
-#ifdef USE_CNAT
         size_t agg_buf_size = 0;
-#endif
         remote_props_array = (struct remote_con_data_t *)malloc(num_workers*sizeof(struct remote_con_data_t));
         //step 2 - create resources
         /* get device names in the system */
@@ -328,9 +324,7 @@ namespace omnireduce {
             current_offset_thread[i] = (uint32_t *)malloc(sizeof(uint32_t)*num_slots_per_thread);
         }
         if (direct_memory) {
-#ifdef USE_CNAT
 	    agg_buf_size = num_slots_per_thread*block_size*num_server_threads*4;
-#endif
             comm_buf_size = num_slots_per_thread*block_size*num_server_threads*(num_workers+num_comm_buff);
 	}
         else
@@ -342,7 +336,6 @@ namespace omnireduce {
             exit(1);                    
         }
         memset(comm_buf, 0, comm_buf_size*buff_unit_size);
-#ifdef USE_CNAT
         ret = posix_memalign(reinterpret_cast<void**>(&agg_buf), cycle_buffer, agg_buf_size*buff_unit_size);
         if (ret!=0)
         {
@@ -350,7 +343,6 @@ namespace omnireduce {
             exit(1);
         }
         memset(agg_buf, 0, agg_buf_size*buff_unit_size);
-#endif
         /* register the memory buffer */
         srcs_ = (uint32_t **)malloc(sizeof(uint32_t*)*num_workers);
         mrs_ = (struct ibv_mr **)malloc(sizeof(struct ibv_mr*)*num_workers);

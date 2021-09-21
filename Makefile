@@ -15,15 +15,11 @@ $(info "USE_CUDA ON")
 CXXFLAGS += -DUSE_CUDA --compiler-options -fPIC 
 CC  := nvcc
 LD  := nvcc
+LDLIBS += -lcurand
 else
 CXXFLAGS += -fPIC
 CC  := g++
 LD  := g++
-endif
-ifeq ($(USE_CNAT),ON)
-$(info "USE_CNAT ON")
-CXXFLAGS += -DUSE_CNAT
-LDLIBS += -lcurand
 endif
 
 SOURCE:=${wildcard ${SOURCEDIR}/*.cpp}

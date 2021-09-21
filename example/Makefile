@@ -12,9 +12,6 @@ LIBPATH += -L${CUDA_HOME}/lib -L${CUDA_HOME}/lib64
 APPS += cuda_worker
 CXXFLAGS += -DUSE_CUDA
 LDLIBS += -lcudart
-endif
-ifeq ($(USE_CNAT),ON)
-CXXFLAGS += -DUSE_CNAT
 LDLIBS += -lcurand
 endif
 LDLIBS += -lomnireduce 

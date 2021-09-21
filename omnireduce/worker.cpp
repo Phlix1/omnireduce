@@ -740,12 +740,10 @@ namespace omnireduce {
                         typecode = FLOAT32;
                         element_size = sizeof(float);
                         break;
-#ifdef USE_CNAT
                     case UINT8:
                         typecode = UINT8;
                         element_size = sizeof(uint8_t);
                         break;
-#endif
                     default:
                         std::cerr<<"Data type error"<<std::endl;
                         exit(1);
@@ -756,16 +754,7 @@ namespace omnireduce {
                 tensor_size = tu.count;
 
 #ifdef USE_CUDA
-  #ifdef USE_CNAT
                 cudaStreamSynchronize(tu.cnat_stream);
-  #else
-                cudaStreamCreate(&stream);
-                cudaEventCreate(&event);
-                cudaMemcpyAsync((uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size,
-                                tensor_size*element_size, cudaMemcpyDeviceToDevice, stream);
-                cudaEventRecord(event, stream);
-                cudaEventSynchronize(event);
-  #endif
 #else
                 memcpy((uint8_t*)(dctx_ptr->comm_buf)+start_offset*element_size, (uint8_t*)(tu.ptr)+start_offset*element_size, tensor_size*element_size);
 #endif
@@ -819,14 +808,6 @@ namespace omnireduce {
                 } //while (finished_slots<first_burst && !force_quit)
 
 #ifdef USE_CUDA
-  #ifndef USE_CNAT
-                cudaMemcpyAsync((uint8_t*)(tu.ptr)+start_offset*element_size, (uint8_t*)(dctx_ptr->cuda_comm_buf)+start_offset*element_size, 
-                                tensor_size*element_size, cudaMemcpyDeviceToDevice, stream);
-                cudaEventRecord(event, stream);
-                cudaEventSynchronize(event);                
-                cudaStreamDestroy(stream);
-                cudaEventDestroy(event);
-  #endif
 #else
                 memcpy((uint8_t*)(tu.ptr)+start_offset*element_size, (uint8_t*)(dctx_ptr->comm_buf)+start_offset*element_size, tensor_size*element_size);
 #endif

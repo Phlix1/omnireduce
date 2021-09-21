@@ -1,8 +1,6 @@
 #include "omnireduce/aggregator.hpp"
 #include "omnireduce/aggcontext.hpp"
-#ifdef USE_CNAT
 #include <array>
-#endif
 namespace omnireduce {
     thread_local static uint32_t num_server_threads;
     thread_local static uint32_t thread_id;
@@ -17,7 +15,6 @@ namespace omnireduce {
     thread_local static uint32_t buff_unit_size;
     thread_local static uint32_t num_comm_buff;
     thread_local static uint32_t typecode;
-#ifdef USE_CNAT
     thread_local static constexpr uint8_t sign_and_exp_to_encoding[] = 
         { 0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,   0,
           0,   0,   0,   0,   1,   2,   3,   4,   5,   6,   7,   8,   9,  10,
@@ -83,7 +80,6 @@ namespace omnireduce {
         3145728000, 3154116608, 3162505216, 3170893824, 3179282432, 3187671040, 3196059648, 3204448256, 3212836864, 3221225472,
         3229614080, 3238002688, 3246391296, 3254779904, 3263168512, 3271557120, 3279945728, 3288334336, 3296722944, 3305111552,
         3313500160, 3321888768, 3330277376, 3338665984, 3347054592, 3355443200};
-#endif
 
     int post_send_server(AggContext* dctx_ptr, uint32_t num, uint32_t slot, uint32_t qp_num, uint32_t buff_index)
     {
@@ -497,7 +493,6 @@ namespace omnireduce {
                                         }
                                     }
                                     break;
-#ifdef USE_CNAT
                                 case UINT8:
                                     {
                                         float *aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->agg_buf + (block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
@@ -511,7 +506,6 @@ namespace omnireduce {
                                         }
                                     }
                                     break;
-#endif
                                 case INT32:
                                     {
                                         int32_t *aggregation_pool_int32 = (int32_t *)((uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
@@ -535,7 +529,6 @@ namespace omnireduce {
                             }
                             if(dctx_ptr->current_offset_thread[thread_id][slot]<min_next_offset[slot])
                             {
-#ifdef USE_CNAT
                                 auto *aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->agg_buf + (block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
                                 auto *send_buff_uint8 = (uint8_t*)dctx_ptr->comm_buf+(num_slots_per_thread*block_size*num_server_threads*(num_workers+set[slot])
                                                                                       +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float);
@@ -548,34 +541,6 @@ namespace omnireduce {
                                     send_buff_uint8[k] = sign_and_exp_to_encoding[exp];
                                     aggregation_pool_float32[k] = 0;
                                 }
-#else
-				switch (dctx_ptr->typecode)
-                                {
-                                    case FLOAT32:
-                                        {
-                                            float *shadow_aggregation_pool_float32 = (float *)((uint8_t*)dctx_ptr->comm_buf
-                                                                                +(num_slots_per_thread*block_size*num_server_threads*(num_workers+(set[slot]+1)%num_comm_buff)
-                                                                                +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(float));
-                                            for(uint32_t k=0; k<block_size; k++){
-                                                shadow_aggregation_pool_float32[k] = 0.0;
-                                            }
-                                        }
-                                        break;
-                                    case INT32:
-                                        {
-                                            int32_t *shadow_aggregation_pool_int32 = (int32_t *)((uint8_t*)dctx_ptr->comm_buf
-                                                                                +(num_slots_per_thread*block_size*num_server_threads*(num_workers+(set[slot]+1)%num_comm_buff)
-                                                                                +block_size*(slot+num_slots_per_thread*thread_id))*sizeof(int32_t));
-                                            for(uint32_t k=0; k<block_size; k++){
-                                                shadow_aggregation_pool_int32[k] = 0;
-                                            }
-                                        }
-                                        break;
-                                    default:
-                                        std::cerr<<"Data type error"<<std::endl;
-                                        exit(1);
-                                }
-#endif
                                 for(uint32_t k=0; k<num_workers; k++)
                                 {
                                     if (min_next_offset[slot]==block_next_offset[slot][k])
