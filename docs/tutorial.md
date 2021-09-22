@@ -1,8 +1,8 @@
 # Tutorial
-In this tutorial, we will introduce how to use OmniReduce. We use the docker image to ensure that you don't encounter problems with the system environment. We take the benchmark in [this repo](https://github.com/Phlix1/exps) as an example to introduce how to use OmniReduce step by step.
+In this tutorial, we will introduce how to use OmniReduce. We use the docker image to ensure that you don't encounter problems with the system environment. We take the benchmark in [this repo](https://github.com/sands-lab/omnireduce-experiments) as an example to introduce how to use OmniReduce step by step.
 
 ## Build Image
-Build the docker image according to [this](https://github.com/Phlix1/omnireduce/tree/master/docker).
+Build the docker image according to [this](https://github.com/sands-lab/omnireduce/tree/master/omnireduce-RDMA/docker).
 
 ## Distributed Training (RDMA)
 Let's say you have two workers and two aggregators. Each worker has one GPU. Assume that the network interface to use is `eth0` and the IP addresses are as follows:
@@ -15,7 +15,7 @@ Let's say you have two workers and two aggregators. Each worker has one GPU. Ass
 | aggregator-1 | 10.0.0.21 |
 
 ### Create configuration file
-Firstly, you need to create the `omnireduce.cfg` according to [this](https://github.com/Phlix1/omnireduce/tree/master/example#1-configuration-file). The following parameters need to be updated:
+Firstly, you need to create the `omnireduce.cfg` according to [this](https://github.com/sands-lab/omnireduce/tree/master/omnireduce-RDMA/example#1-configuration-file). The following parameters need to be updated:
 
 | Parameter | Value |
 |--|--|
@@ -56,7 +56,7 @@ For worker-1
     CUDA_VISIBLE_DEVICES=0 GLOO_SOCKET_IFNAME=eth0 python benchmark.py  -d 1.0 --backend gloo -t 26214400 -r 1 -s 2 --ip 10.0.0.10
 
 ### Run end-to-end
-To run the end-to-end experiments, please refer to [this](https://github.com/Phlix1/exps/tree/master/models).  Here we take LSTM training as an example.
+To run the end-to-end experiments, please refer to [this](https://github.com/sands-lab/omnireduce-experiments/tree/master/models).  Here we take LSTM training as an example.
 
 #### LSTM training
 

@@ -8,7 +8,7 @@ make USE_CUDA=ON
 After building, the output programs include `worker`, `cuda_worker` and `aggregator`.
 ## Run example
 ### 1. Configuration file
-Before running the example, the [omnireduce.cfg](https://github.com/Phlix1/omnireduce/blob/master/example/omnireduce.cfg) requires to be edited according to the cluster. This file needs to be copied to all the workers and aggregators.
+Before running the example, the [omnireduce.cfg](https://github.com/sands-lab/omnireduce/blob/master/omnireduce-RDMA/example/omnireduce.cfg) requires to be edited according to the cluster. This file needs to be copied to all the workers and aggregators.
 Below, we introduce the parameters in the configuration file.
 - **RDMA configuration**
 	- **`ib_hca`** specify which RDMA interfaces to use for communication. Example：mlx5_1.
