@@ -11,7 +11,7 @@ Subject: [PATCH] Add OmniReduce Support
  4 files changed, 70 insertions(+), 23 deletions(-)
 
 diff --git a/torch/csrc/distributed/c10d/init.cpp b/torch/csrc/distributed/c10d/init.cpp
-index 715403ac57..147fd305d0 100644
+index 715403a..a82ca11 100644
 --- a/torch/csrc/distributed/c10d/init.cpp
 +++ b/torch/csrc/distributed/c10d/init.cpp
 @@ -913,7 +913,7 @@ Arguments:
@@ -19,22 +19,22 @@ index 715403ac57..147fd305d0 100644
  
              options.timeout = timeout;
 -            options.threads = options.devices.size() * 2;
-+            options.threads = 1;//options.devices.size() * 2;
++            options.threads = 1;
              return std::make_shared<::c10d::ProcessGroupGloo>(
                  store, rank, size, options);
            }),
 diff --git a/torch/lib/c10d/CMakeLists.txt b/torch/lib/c10d/CMakeLists.txt
-index 4b206f3801..b6db9afa9f 100644
+index 4b206f3..06caec5 100644
 --- a/torch/lib/c10d/CMakeLists.txt
 +++ b/torch/lib/c10d/CMakeLists.txt
 @@ -76,6 +76,7 @@ if(USE_C10D_GLOO)
  endif()
- 
+
  add_library(c10d STATIC ${C10D_SRCS})
 +target_link_libraries(c10d PUBLIC boost_system boost_thread boost_chrono boost_program_options omnireduce)
  set_property(TARGET c10d PROPERTY POSITION_INDEPENDENT_CODE ON)
  set_property(TARGET c10d PROPERTY CXX_STANDARD 14)
- 
+
 diff --git a/torch/lib/c10d/ProcessGroupGloo.cpp b/torch/lib/c10d/ProcessGroupGloo.cpp
 index c139ac7a34..d16a5cdab9 100644
 --- a/torch/lib/c10d/ProcessGroupGloo.cpp
@@ -46,7 +46,7 @@ index c139ac7a34..d16a5cdab9 100644
 -      uint32_t tag)
 -      : AsyncAllreduceWork(context, inputs, reduceOp, tag) {
 -    initializeStreamsEvents(inputs, streams, events);
-+      uint32_t tag, 
++      uint32_t tag,
 +      omnireduce::OmniContext& omniContext)
 +      : AsyncAllreduceWork(context, inputs, reduceOp, tag), omniContext(omniContext) {
 +    const auto& scalarType = inputs[0].scalar_type();
@@ -99,7 +99,7 @@ index c139ac7a34..d16a5cdab9 100644
 +        case ::at::ScalarType::Int:
 +          //omniContext.AllReduce(getDataPointer<int32_t>(inputs[0]), int(inputs[0].numel()), streams[0].stream(), inputs[0].device().index(), true, false);
 +          omniContext.AllReduce(getDataPointer<int32_t>(inputs[0]), int(inputs[0].numel()), streams[0].stream(), inputs[0].device().index());
-+          break; 
++          break;
 +        default:
 +          std::cerr<<"Data type error"<<std::endl;
 +      }

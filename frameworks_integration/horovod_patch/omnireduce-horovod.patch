@@ -234,7 +234,7 @@ index 0000000..b79c08c
 +  // Copy memory into the fusion buffer.
 +  if (entries.size() > 1) {
 +    if (global_state_->timeline.Initialized()) {
-+      gpu_context_->RecordEvent(gpu_op_context_.event_queue, 
++      gpu_context_->RecordEvent(gpu_op_context_.event_queue,
 +                                OMNI_PARAM "\"bytes\":" + std::to_string(num_elements * DataType_Size(first_entry.tensor->dtype())),
 +                                *gpu_op_context_.stream);
 +    }
@@ -248,7 +248,7 @@ index 0000000..b79c08c
 +    LOG(DEBUG) << "OmniAllreduce: MemcpyInFusionBuffer done";
 +  } else {
 +    if (global_state_->timeline.Initialized()) {
-+      gpu_context_->RecordEvent(gpu_op_context_.event_queue, 
++      gpu_context_->RecordEvent(gpu_op_context_.event_queue,
 +                                OMNI_PARAM "\"bytes\":" + std::to_string(num_elements * DataType_Size(first_entry.tensor->dtype())),
 +                                *gpu_op_context_.stream);
 +    }
@@ -268,7 +268,7 @@ index 0000000..b79c08c
 +
 +  // Do allreduce.
 +  if (global_state_->timeline.Initialized()) {
-+    gpu_context_->RecordEvent(gpu_op_context_.event_queue, 
++    gpu_context_->RecordEvent(gpu_op_context_.event_queue,
 +                              OMNI_PARAM "\"bytes\":" + std::to_string(num_elements * DataType_Size(first_entry.tensor->dtype())),
 +                              *gpu_op_context_.stream);
 +  }
@@ -291,7 +291,7 @@ index 0000000..b79c08c
 +  }
 +
 +  LOG(DEBUG) << "OmniAllreduce: allreduce done";
-+  
++
 +  if (global_state_->timeline.Initialized()) {
 +    gpu_context_->RecordEvent(gpu_op_context_.event_queue, OMNI_ALLREDUCE,
 +                              *gpu_op_context_.stream);
@@ -300,7 +300,7 @@ index 0000000..b79c08c
 +  // Copy memory out of the fusion buffer.
 +  if (entries.size() > 1) {
 +    if (global_state_->timeline.Initialized()) {
-+      gpu_context_->RecordEvent(gpu_op_context_.event_queue, 
++      gpu_context_->RecordEvent(gpu_op_context_.event_queue,
 +                                OMNI_PARAM "\"bytes\":" + std::to_string(num_elements * DataType_Size(first_entry.tensor->dtype())),
 +                                *gpu_op_context_.stream);
 +    }
@@ -344,7 +344,7 @@ index 0000000..8a5502a
 +  OmniAllreduce(
 +      omnireduce::OmniContext* omniContext, GPUContext* gpu_context,
 +      HorovodGlobalState* global_state)
-+      : GPUAllreduce(gpu_context, global_state), omniContext_(omniContext), 
++      : GPUAllreduce(gpu_context, global_state), omniContext_(omniContext),
 +        global_state_(global_state){};
 +
 +  Status Execute(std::vector<TensorTableEntry>& entries,
@@ -696,7 +696,7 @@ index 0000000..881f607
 +        self.assertTrue(self.evaluate(tf.reduce_all(tests)),
 +                        "hvd.omni_allreduce produces incorrect results")
 +
-+    
++
 +if _has_eager:
 +    from tensorflow.python.framework.test_util import run_all_in_graph_and_eager_modes
 +    run_all_in_graph_and_eager_modes(TensorFlowTests)
@@ -749,7 +749,7 @@ index 0000000..dfb0b01
 +_fp16_supported = _v2_api
 +
 +ccl_supported_types = set([torch.CharTensor, torch.IntTensor,
-+                           torch.LongTensor, torch.FloatTensor, 
++                           torch.LongTensor, torch.FloatTensor,
 +                           torch.DoubleTensor])
 +
 +
@@ -901,7 +901,7 @@ index 0000000..dfb0b01
 +
 +            assert max_difference <= threshold, 'hvd.allreduce produces incorrect results'
 +        print("finish to test_horovod_allreduce_inplace")
-+    
++
 +    def test_horovod_allreduce_async_fused(self):
 +        """Test that the allreduce correctly sums 1D, 2D, 3D tensors
 +        with Tensor Fusion."""
